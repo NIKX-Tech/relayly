@@ -204,6 +204,21 @@ internally.
 
 ---
 
+### Testing & Verification
+
+To verify that your relay is correctly routing encrypted messages between paired devices, you can use the built-in tester utility:
+
+1.  **Register & Pair**: Register two devices via the CLI or Admin UI and ensure they are paired.
+2.  **Run Client A**:
+    ```bash
+    go run cmd/relayly-tester/main.go -name "Device A" -id <ID_A> -token <TOKEN_A>
+    ```
+3.  **Run Client B**:
+    ```bash
+    go run cmd/relayly-tester/main.go -name "Device B" -id <ID_B> -token <TOKEN_B>
+    ```
+4.  **Send Messages**: Type a message in one terminal and it will appear in the other, fully encrypted end-to-end.
+
 ## Development
 
 ```bash
