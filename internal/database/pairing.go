@@ -19,6 +19,17 @@ type Device struct {
 	LastSeen   *time.Time
 }
 
+// PairedWithShort returns the first 8 characters of the paired device ID, or empty string.
+func (d Device) PairedWithShort() string {
+	if d.PairedWith == nil || len(*d.PairedWith) < 8 {
+		if d.PairedWith == nil {
+			return ""
+		}
+		return *d.PairedWith
+	}
+	return (*d.PairedWith)[:8]
+}
+
 // ErrNotFound is returned when a device lookup yields no result.
 var ErrNotFound = errors.New("device not found")
 

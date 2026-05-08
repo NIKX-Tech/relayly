@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/nikx-one/relayly/internal/config"
 	"github.com/nikx-one/relayly/internal/database"
+	"github.com/nikx-one/relayly/internal/noise"
 	"go.uber.org/zap"
 )
 
@@ -23,7 +24,7 @@ var upgrader = websocket.Upgrader{
 //  1. Authenticates the device via ?device_id=&token= query params
 //  2. Upgrades the connection to WebSocket
 //  3. Registers the client with the Hub and starts I/O pumps
-func Handler(hub *Hub, db *database.DB, cfg *config.Config, log *zap.Logger) http.HandlerFunc {
+func Handler(hub *Hub, db *database.DB, cfg *config.Config, log *zap.Logger, serverKey *noise.Keypair) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		deviceID := q.Get("device_id")
@@ -66,6 +67,8 @@ func Handler(hub *Hub, db *database.DB, cfg *config.Config, log *zap.Logger) htt
 			wsCfg.MaxMessageBytes,
 			wsCfg.PingInterval,
 			wsCfg.Deadline,
+			serverKey,
+			db,
 		)
 
 		hub.Register <- client

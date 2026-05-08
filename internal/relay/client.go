@@ -2,10 +2,14 @@
 package relay
 
 import (
+	"encoding/hex"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/nikx-one/relayly/internal/database"
+	"github.com/nikx-one/relayly/internal/noise"
 	"go.uber.org/zap"
 )
 
@@ -19,9 +23,11 @@ type Client struct {
 	DeviceID       string
 	PairedDeviceID string // empty if not paired at connect time
 
-	conn *websocket.Conn
-	hub  *Hub
-	send chan []byte // outbound message queue
+	conn      *websocket.Conn
+	hub       *Hub
+	db        *database.DB
+	serverKey *noise.Keypair
+	send      chan []byte // outbound message queue
 
 	once sync.Once // ensures close() is idempotent
 	log  *zap.Logger
@@ -39,12 +45,16 @@ func NewClient(
 	log *zap.Logger,
 	maxBytes int64,
 	pingInterval, deadline time.Duration,
+	serverKey *noise.Keypair,
+	db *database.DB,
 ) *Client {
 	return &Client{
 		DeviceID:        deviceID,
 		PairedDeviceID:  pairedDeviceID,
 		conn:            conn,
 		hub:             hub,
+		db:              db,
+		serverKey:       serverKey,
 		send:            make(chan []byte, sendBufferSize),
 		log:             log.With(zap.String("device_id", deviceID)),
 		maxMessageBytes: maxBytes,
@@ -61,11 +71,73 @@ func (c *Client) Pump() {
 		c.close()
 	}()
 
+	// Perform Noise XX handshake
+	if err := c.handshake(); err != nil {
+		c.log.Warn("noise handshake failed", zap.Error(err))
+		return
+	}
+
 	// Start writer goroutine
 	go c.writePump()
 
 	// Read pump (runs in the calling goroutine)
 	c.readPump()
+}
+
+// handshake performs the three-message Noise XX exchange as responder.
+func (c *Client) handshake() error {
+	hs, err := noise.NewServerHandshake(c.serverKey)
+	if err != nil {
+		return err
+	}
+
+	_ = c.conn.SetReadDeadline(time.Now().Add(c.deadline))
+	_ = c.conn.SetWriteDeadline(time.Now().Add(c.deadline))
+
+	// Message 1: ← client
+	_, msg1, err := c.conn.ReadMessage()
+	if err != nil {
+		return err
+	}
+	if _, _, _, err := hs.ReadMessage(nil, msg1); err != nil {
+		return fmt.Errorf("reading client handshake msg1: %w", err)
+	}
+
+	// Message 2: → client
+	msg2, _, _, err := hs.WriteMessage(nil, nil)
+	if err != nil {
+		return err
+	}
+	if err := c.conn.WriteMessage(websocket.BinaryMessage, msg2); err != nil {
+		return err
+	}
+
+	// Message 3: ← client
+	_, msg3, err := c.conn.ReadMessage()
+	if err != nil {
+		return err
+	}
+	if _, _, _, err := hs.ReadMessage(nil, msg3); err != nil {
+		return fmt.Errorf("reading client handshake msg3: %w", err)
+	}
+
+	// Handshake complete — verify/store client public key
+	remotePub := hs.PeerStatic()
+	pubHex := hex.EncodeToString(remotePub)
+
+	device, err := c.db.GetDeviceByID(c.DeviceID)
+	if err == nil {
+		if device.PublicKey == "" {
+			// First handshake: persist the public key
+			_ = c.db.UpdatePublicKey(c.DeviceID, pubHex)
+			c.log.Info("locked device to public key", zap.String("pub", pubHex))
+		} else if device.PublicKey != pubHex {
+			// Subsequent handshake: key must match
+			return fmt.Errorf("public key mismatch: expected %s, got %s", device.PublicKey, pubHex)
+		}
+	}
+
+	return nil
 }
 
 // readPump receives frames from the WebSocket and routes them to the peer.

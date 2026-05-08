@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/json"
 	"html/template"
+	"io/fs"
 	"net/http"
 	"time"
 
@@ -29,7 +30,11 @@ type Server struct {
 
 // New creates a new admin Server and registers all routes.
 func New(hub *relay.Hub, db *database.DB, log *zap.Logger) (*Server, error) {
-	tmpls, err := template.New("").ParseFS(templateFS, "templates/*.html", "templates/partials/*.html")
+	subFS, err := fs.Sub(templateFS, "templates")
+	if err != nil {
+		return nil, err
+	}
+	tmpls, err := template.ParseFS(subFS, "*.html", "partials/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +57,7 @@ func (s *Server) registerRoutes() {
 	// HTMX partials
 	s.mux.HandleFunc("GET /htmx/devices", s.handleDevicesPartial)
 	s.mux.HandleFunc("DELETE /htmx/devices/{id}", s.handleDeleteDevice)
+	s.mux.HandleFunc("POST /htmx/pair", s.handlePairDevices)
 
 	// REST API (used by `relayly status` CLI command)
 	s.mux.HandleFunc("GET /api/v1/status", s.apiStatus)
@@ -95,7 +101,7 @@ func (s *Server) handleDevicesPartial(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "db error", http.StatusInternalServerError)
 		return
 	}
-	s.render(w, "partials/devices_table.html", map[string]any{
+	s.render(w, "devices_table", map[string]any{
 		"Devices": devices,
 		"Online":  onlineSet(s.hub.ConnectedDevices()),
 	})
@@ -109,6 +115,31 @@ func (s *Server) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("device deleted via admin UI", zap.String("device_id", id))
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handlePairDevices(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	id1 := r.FormValue("id1")
+	id2 := r.FormValue("id2")
+
+	if id1 == "" || id2 == "" || id1 == id2 {
+		http.Error(w, "invalid device IDs", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.db.PairDevices(id1, id2); err != nil {
+		s.log.Error("pairing error", zap.Error(err))
+		http.Error(w, "pairing failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.log.Info("devices paired via admin UI", zap.String("id1", id1), zap.String("id2", id2))
+
+	// Refresh the whole table
+	s.handleDevicesPartial(w, r)
 }
 
 // ── API handlers ───────────────────────────────────────────────────────────────
@@ -142,7 +173,9 @@ func (s *Server) apiDevices(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpls.ExecuteTemplate(w, name, data); err != nil {
+	// Try the name as provided, then try the base name if it fails
+	err := s.tmpls.ExecuteTemplate(w, name, data)
+	if err != nil {
 		s.log.Error("template render error", zap.String("template", name), zap.Error(err))
 		http.Error(w, "render error", http.StatusInternalServerError)
 	}

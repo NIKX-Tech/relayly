@@ -100,6 +100,7 @@ relayly/
 | `relayly start --config path/to/relayly.yaml` | Use custom config |
 | `relayly pair <name>` | Register device, print QR code |
 | `relayly pair <name> --no-qr` | Print token only |
+| `relayly link <id1> <id2>` | Pair two devices for relaying |
 | `relayly status` | Show connected devices + uptime |
 | `relayly status --format=json` | Machine-readable output |
 

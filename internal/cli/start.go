@@ -79,7 +79,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// ── Relay HTTP server ─────────────────────────────────────────────────
 	relayMux := http.NewServeMux()
-	relayMux.HandleFunc("/ws", relay.Handler(hub, db, cfg, log))
+	relayMux.HandleFunc("/ws", relay.Handler(hub, db, cfg, log, kp))
 	relayMux.HandleFunc("/health", relay.StatusHandler(hub))
 
 	relayServer := &http.Server{

@@ -1,4 +1,4 @@
-{{define "devices_table_body"}}
+{{define "devices_table"}}
 <table class="w-full text-sm text-left">
   <thead class="text-xs uppercase text-gray-500 border-b border-gray-800">
     <tr>
@@ -26,12 +26,27 @@
         {{end}}
       </td>
       <td class="px-5 py-3 font-mono text-xs text-gray-400">
-        {{if .PairedWith}}{{slice *(.PairedWith) 0 8}}…{{else}}<em class="text-gray-600">unpaired</em>{{end}}
+        {{if .PairedWith}}
+          {{.PairedWithShort}}…
+        {{else}}
+          <form hx-post="/htmx/pair" hx-target="#devices-table" hx-swap="innerHTML">
+            <input type="hidden" name="id1" value="{{.ID}}">
+            <select name="id2" class="bg-gray-900 border border-gray-700 text-gray-300 text-xs rounded p-1 focus:ring-blue-500 focus:border-blue-500" onchange="this.form.requestSubmit()">
+              <option value="">Pair with...</option>
+              {{$thisID := .ID}}
+              {{range $.Devices}}
+                {{if and (ne .ID $thisID) (not .PairedWith)}}
+                  <option value="{{.ID}}">{{.Name}}</option>
+                {{end}}
+              {{end}}
+            </select>
+          </form>
+        {{end}}
       </td>
       <td class="px-5 py-3 text-gray-400">
         {{if .LastSeen}}{{.LastSeen.Format "2006-01-02 15:04"}}{{else}}—{{end}}
       </td>
-      <td class="px-5 py-3">
+      <td class="px-5 py-3 flex gap-3">
         <button
           class="text-xs text-red-400 hover:text-red-300 transition"
           hx-delete="/htmx/devices/{{.ID}}"
