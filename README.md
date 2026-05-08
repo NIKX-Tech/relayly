@@ -1,26 +1,50 @@
 # Relayly
 
 [![CI](https://github.com/nikx-one/relayly/actions/workflows/ci.yml/badge.svg)](https://github.com/nikx-one/relayly/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/nikx-one/relayly)](https://goreportcard.com/report/github.com/nikx-one/relayly)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/nikx-one/relayly)](https://github.com/nikx-one/relayly)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Issues](https://img.shields.io/github/issues/nikx-one/relayly)](https://github.com/nikx-one/relayly/issues)
 
 > **Lightweight, self-hosted WebSocket relay for local-first, end-to-end encrypted device communication.**
 
-Relayly lets your own devices — phone, laptop, desktop — talk to each other
-through a server you control, with all payloads encrypted using the
-[Noise Protocol](https://noiseprotocol.org/) (Noise_XX_25519_ChaChaPoly_BLAKE2s).
-The relay never sees plaintext.
+Relayly enables trustless message routing between your own devices — phone, laptop, desktop — through a server you control. All communication is encrypted using the [Noise Protocol](https://noiseprotocol.org/) (Noise_XX_25519_ChaChaPoly_BLAKE2s), ensuring the relay server only ever handles opaque cryptographic blobs.
 
 ---
 
+## How it Works
+
+Relayly acts as a "dumb" router that facilitates secure handshakes and message forwarding.
+
+```mermaid
+sequenceDiagram
+    participant A as Device A (Initiator)
+    participant R as Relayly Server
+    participant B as Device B (Responder)
+
+    Note over A,B: 1. Noise XX Handshake
+    A->>R: Handshake Message 1
+    R->>B: Forward Handshake 1
+    B->>R: Handshake Message 2
+    R->>A: Forward Handshake 2
+    A->>R: Handshake Message 3
+    R->>B: Forward Handshake 3
+
+    Note over A,B: 2. End-to-End Encrypted Tunnel Established
+    A->>R: Encrypted Payload (Device B)
+    R->>B: Forwarded Payload
+    B->>R: Encrypted Response (Device A)
+    R->>A: Forwarded Response
+```
+
 ## Features
 
-- 🔐 **End-to-end encryption** via Noise Protocol XX handshake
-- ⚡ **WebSocket relay** — zero-latency message forwarding between paired devices
-- 🗄️ **SQLite storage** — pure-Go driver (`modernc.org/sqlite`), no CGo required
-- 🐳 **Single binary + Docker** — `docker compose up` and you're running
-- 🖥️ **Admin UI** — HTMX + Tailwind dashboard for device management (auto-refreshes)
-- 🔑 **QR code pairing** — scan to pair, no manual token entry needed
-- 🧰 **Reference client library** — `pkg/client` shows you exactly how to connect and E2EE
+- 🔐 **End-to-End Encryption**: Noise Protocol XX handshake provides mutual authentication and forward secrecy.
+- ⚡ **Real-time Forwarding**: Low-latency WebSocket-based relaying with minimal server-side overhead.
+- 🗄️ **Zero-Config Storage**: Embedded SQLite storage (`modernc.org/sqlite`) — no external database or CGo required.
+- 🐳 **Infrastructure Ready**: Pre-built Docker images and a single portable binary for easy self-hosting.
+- 🖥️ **Interactive Admin**: Modern HTMX-powered dashboard for device lifecycle and pairing management.
+- 🔑 **Trustless Architecture**: Public Key Locking ensures the relay cannot swap keys or impersonate devices.
 
 ---
 
@@ -218,6 +242,15 @@ To verify that your relay is correctly routing encrypted messages between paired
     go run cmd/relayly-tester/main.go -name "Device B" -id <ID_B> -token <TOKEN_B>
     ```
 4.  **Send Messages**: Type a message in one terminal and it will appear in the other, fully encrypted end-to-end.
+
+## Security & Privacy
+ 
+Relayly is built on the principle of **Privacy by Design**:
+- **No Data Harvesting**: The server does not require accounts, emails, or personal data. 
+- **E2EE Handshake**: Uses Noise XX which provides mutual authentication. Both the initiator and responder verify each other's static public keys.
+- **Perfect Forward Secrecy**: Handshake keys are ephemeral and discarded after the session is established.
+- **Public Key Locking**: To prevent Man-in-the-Middle (MitM) attacks by a compromised relay, the server "locks" a device to its first seen public key. Any attempt to connect with a different key for the same Device ID is rejected unless manually cleared by the administrator.
+- **Auditability**: The codebase is small, dependency-light, and written in memory-safe Go.
 
 ## Development
 
