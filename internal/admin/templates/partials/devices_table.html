@@ -1,0 +1,54 @@
+{{define "devices_table_body"}}
+<table class="w-full text-sm text-left">
+  <thead class="text-xs uppercase text-gray-500 border-b border-gray-800">
+    <tr>
+      <th class="px-5 py-3">Name</th>
+      <th class="px-5 py-3">Status</th>
+      <th class="px-5 py-3">Paired With</th>
+      <th class="px-5 py-3">Last Seen</th>
+      <th class="px-5 py-3">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+  {{range .Devices}}
+    <tr class="border-b border-gray-800 hover:bg-gray-800/40 transition">
+      <td class="px-5 py-3 font-medium text-white">
+        {{.Name}}
+        <span class="ml-1 font-mono text-xs text-gray-600">{{slice .ID 0 8}}</span>
+      </td>
+      <td class="px-5 py-3">
+        {{if index $.Online .ID}}
+          <span class="inline-flex items-center gap-1.5 text-green-400">
+            <span class="status-dot w-2 h-2 rounded-full bg-green-400 inline-block"></span>Online
+          </span>
+        {{else}}
+          <span class="text-gray-500">Offline</span>
+        {{end}}
+      </td>
+      <td class="px-5 py-3 font-mono text-xs text-gray-400">
+        {{if .PairedWith}}{{slice *(.PairedWith) 0 8}}…{{else}}<em class="text-gray-600">unpaired</em>{{end}}
+      </td>
+      <td class="px-5 py-3 text-gray-400">
+        {{if .LastSeen}}{{.LastSeen.Format "2006-01-02 15:04"}}{{else}}—{{end}}
+      </td>
+      <td class="px-5 py-3">
+        <button
+          class="text-xs text-red-400 hover:text-red-300 transition"
+          hx-delete="/htmx/devices/{{.ID}}"
+          hx-target="closest tr"
+          hx-swap="outerHTML"
+          hx-confirm="Revoke device '{{.Name}}'?">
+          Revoke
+        </button>
+      </td>
+    </tr>
+  {{else}}
+    <tr>
+      <td colspan="5" class="px-5 py-10 text-center text-gray-600">
+        No devices registered yet. Run <code class="font-mono text-gray-400">relayly pair &lt;name&gt;</code> to add one.
+      </td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}

@@ -1,0 +1,10 @@
+.git
+.gitignore
+*.md
+dist/
+*.test
+*.db
+*.db-shm
+*.db-wal
+*.noise.key
+*.noise.pub

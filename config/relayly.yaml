@@ -1,0 +1,42 @@
+# Relayly Default Configuration
+# All values can be overridden via environment variables (RELAYLY_<KEY>)
+# or a relayly.local.yaml file in the same directory.
+
+# Relay server
+host: "0.0.0.0"
+port: 8080
+
+# TLS (optional — recommended to terminate at a reverse proxy like Caddy)
+tls:
+  enabled: false
+  cert: ""
+  key: ""
+
+# Database
+db:
+  path: "./data/relayly.db"
+
+# Noise Protocol keypair (generated automatically on first run if missing)
+noise:
+  key_path: "./data/server.noise.key"
+
+# Admin UI
+admin:
+  enabled: true
+  port: 8081
+  # Bind admin to localhost only by default (do NOT expose to internet)
+  host: "127.0.0.1"
+
+# Logging
+log:
+  level: "info"   # debug | info | warn | error
+  format: "json"  # json | console
+
+# WebSocket tuning
+websocket:
+  # Maximum message size in bytes (default 64 KiB)
+  max_message_bytes: 65536
+  # Ping interval (seconds)
+  ping_interval: 30
+  # Read/write deadline (seconds)
+  deadline: 60

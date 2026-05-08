@@ -1,0 +1,41 @@
+# Binaries
+/relayly
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build artifacts
+*.o
+*.a
+*.test
+
+# Go workspace
+go.work
+go.work.sum
+
+# Data directory (runtime)
+/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Noise keypairs (sensitive)
+*.noise.key
+*.noise.pub
+
+# Config overrides
+relayly.local.yaml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Docker
+.docker/

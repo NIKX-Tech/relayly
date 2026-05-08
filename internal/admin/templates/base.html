@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-950 text-gray-100">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{block "title" .}}Relayly Admin{{end}}</title>
+  <!-- Tailwind CDN (admin-only, not on the relay path) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            relay: { 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca' }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- HTMX -->
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <style>
+    .status-dot { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased">
+
+  <!-- Navbar -->
+  <nav class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center gap-4">
+    <a href="/" class="flex items-center gap-2">
+      <svg class="w-7 h-7 text-relay-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M8 7h8M8 12h8m-8 5h5M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z"/>
+      </svg>
+      <span class="text-lg font-semibold tracking-tight text-white">Relayly</span>
+      <span class="text-xs text-gray-500 font-mono ml-1">admin</span>
+    </a>
+    <div class="ml-auto flex items-center gap-6 text-sm">
+      <a href="/" class="text-gray-400 hover:text-white transition">Dashboard</a>
+      <a href="/devices" class="text-gray-400 hover:text-white transition">Devices</a>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="flex-1 overflow-auto">
+    {{block "content" .}}{{end}}
+  </main>
+
+  <!-- Footer -->
+  <footer class="text-center py-3 text-xs text-gray-600 border-t border-gray-800">
+    Relayly · <span class="font-mono">{{.Version}}</span>
+  </footer>
+
+</body>
+</html>
