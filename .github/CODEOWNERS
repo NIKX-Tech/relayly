@@ -1,0 +1,8 @@
+# This file specifies who is responsible for which parts of the repository.
+
+# The '*' pattern means everything in the repository.
+*       @NIKX-Tech
+
+# Specific paths can have different owners.
+/sdk/ts/ @NIKX-Tech
+/sdk/go/ @NIKX-Tech
