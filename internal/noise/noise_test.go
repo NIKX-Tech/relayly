@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	flnoise "github.com/flynn/noise"
-	"github.com/nikx-one/relayly/internal/noise"
+	"github.com/NIKX-Tech/relayly/internal/noise"
 )
 
 // ── Keypair ───────────────────────────────────────────────────────────────────

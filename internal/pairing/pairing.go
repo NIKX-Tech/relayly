@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/nikx-one/relayly/internal/database"
+	"github.com/NIKX-Tech/relayly/internal/database"
 )
 
 // base58Alphabet is the standard Bitcoin base58 alphabet (no 0/O/I/l).

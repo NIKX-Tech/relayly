@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nikx-one/relayly/pkg/version"
+	"github.com/NIKX-Tech/relayly/pkg/version"
 	"github.com/spf13/cobra"
 )
 

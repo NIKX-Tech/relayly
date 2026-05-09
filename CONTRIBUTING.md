@@ -4,7 +4,7 @@ First off, thank you for considering contributing to Relayly! It's people like y
 
 ## Where do I go from here?
 
-If you've noticed a bug or have a feature request, make sure to check our [Issues](https://github.com/nikx-one/relayly/issues) first to see if someone else has already created a ticket. If not, go ahead and [make one](https://github.com/nikx-one/relayly/issues/new)!
+If you've noticed a bug or have a feature request, make sure to check our [Issues](https://github.com/NIKX-Tech/relayly/issues) first to see if someone else has already created a ticket. If not, go ahead and [make one](https://github.com/NIKX-Tech/relayly/issues/new)!
 
 ## Setting up for local development
 

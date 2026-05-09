@@ -1,6 +1,6 @@
 module github.com/NIKX-Tech/relayly/examples/go/basic
 
-go 1.22
+go 1.24
 
 require github.com/NIKX-Tech/relayly/sdk/go v0.0.0
 

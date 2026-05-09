@@ -1,8 +1,6 @@
-module github.com/nikx-one/relayly
+module github.com/NIKX-Tech/relayly
 
-go 1.22
-
-toolchain go1.26.3
+go 1.24
 
 require (
 	github.com/flynn/noise v1.1.0

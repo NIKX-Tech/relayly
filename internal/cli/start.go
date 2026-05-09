@@ -8,11 +8,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/nikx-one/relayly/internal/admin"
-	"github.com/nikx-one/relayly/internal/config"
-	"github.com/nikx-one/relayly/internal/database"
-	"github.com/nikx-one/relayly/internal/noise"
-	"github.com/nikx-one/relayly/internal/relay"
+	"github.com/NIKX-Tech/relayly/internal/admin"
+	"github.com/NIKX-Tech/relayly/internal/config"
+	"github.com/NIKX-Tech/relayly/internal/database"
+	"github.com/NIKX-Tech/relayly/internal/noise"
+	"github.com/NIKX-Tech/relayly/internal/relay"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )

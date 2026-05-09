@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nikx-one/relayly/internal/config"
-	"github.com/nikx-one/relayly/internal/database"
-	"github.com/nikx-one/relayly/internal/pairing"
+	"github.com/NIKX-Tech/relayly/internal/config"
+	"github.com/NIKX-Tech/relayly/internal/database"
+	"github.com/NIKX-Tech/relayly/internal/pairing"
 	qrcode "github.com/skip2/go-qrcode"
 	"github.com/spf13/cobra"
 )

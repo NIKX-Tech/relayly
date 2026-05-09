@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikx-one/relayly/internal/relay"
+	"github.com/NIKX-Tech/relayly/internal/relay"
 	"go.uber.org/zap"
 )
 

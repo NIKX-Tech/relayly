@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/nikx-one/relayly/internal/config"
-	"github.com/nikx-one/relayly/internal/database"
-	"github.com/nikx-one/relayly/internal/noise"
+	"github.com/NIKX-Tech/relayly/internal/config"
+	"github.com/NIKX-Tech/relayly/internal/database"
+	"github.com/NIKX-Tech/relayly/internal/noise"
 	"go.uber.org/zap"
 )
 

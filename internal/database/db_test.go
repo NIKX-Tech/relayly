@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikx-one/relayly/internal/database"
+	"github.com/NIKX-Tech/relayly/internal/database"
 )
 
 // openMem opens a fresh in-memory SQLite database for testing.

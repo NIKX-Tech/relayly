@@ -9,8 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/nikx-one/relayly/internal/noise"
-	"github.com/nikx-one/relayly/pkg/client"
+	"github.com/NIKX-Tech/relayly/internal/noise"
+	"github.com/NIKX-Tech/relayly/pkg/client"
 )
 
 func main() {

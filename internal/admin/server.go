@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nikx-one/relayly/internal/database"
-	"github.com/nikx-one/relayly/internal/relay"
-	"github.com/nikx-one/relayly/pkg/version"
+	"github.com/NIKX-Tech/relayly/internal/database"
+	"github.com/NIKX-Tech/relayly/internal/relay"
+	"github.com/NIKX-Tech/relayly/pkg/version"
 	"go.uber.org/zap"
 )
 

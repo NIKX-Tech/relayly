@@ -35,7 +35,7 @@ import (
 
 	fnoise "github.com/flynn/noise"
 	"github.com/gorilla/websocket"
-	"github.com/nikx-one/relayly/internal/noise"
+	"github.com/NIKX-Tech/relayly/internal/noise"
 )
 
 // Options configures a Relayly client connection.

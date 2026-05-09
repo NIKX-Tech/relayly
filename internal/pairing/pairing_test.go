@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nikx-one/relayly/internal/pairing"
+	"github.com/NIKX-Tech/relayly/internal/pairing"
 )
 
 func TestGeneratePairToken(t *testing.T) {

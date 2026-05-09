@@ -1,4 +1,4 @@
-# ⚡ Relayly
+# Relayly
 
 **Lightweight, self-hosted WebSocket relay for local-first, end-to-end encrypted device communication.**
 
