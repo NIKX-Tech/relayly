@@ -1,0 +1,9 @@
+{
+  "initial-version": "0.1.0",
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "package-name": "relayly"
+    }
+  }
+}
