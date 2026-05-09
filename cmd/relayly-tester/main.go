@@ -67,7 +67,7 @@ func main() {
 	var input string
 	for {
 		// Read full line including spaces
-		fmt.Scanln(&input)
+		_, _ = fmt.Scanln(&input)
 		if input == "exit" || ctx.Err() != nil {
 			return
 		}

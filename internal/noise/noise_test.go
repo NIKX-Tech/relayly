@@ -223,12 +223,27 @@ func TestNoiseXXHandshake_MutualAuthentication(t *testing.T) {
 	serverHS, _ := noise.NewServerHandshake(serverKP)
 	clientHS, _ := noise.NewClientHandshake(clientKP, nil)
 
-	msg1, _, _, _ := clientHS.WriteMessage(nil, nil)
-	serverHS.ReadMessage(nil, msg1)
-	msg2, _, _, _ := serverHS.WriteMessage(nil, nil)
-	clientHS.ReadMessage(nil, msg2)
-	msg3, _, _, _ := clientHS.WriteMessage(nil, nil)
-	serverHS.ReadMessage(nil, msg3)
+	msg1, _, _, err := clientHS.WriteMessage(nil, nil)
+	if err != nil {
+		t.Fatalf("client write msg1: %v", err)
+	}
+	if _, _, _, err := serverHS.ReadMessage(nil, msg1); err != nil {
+		t.Fatalf("server read msg1: %v", err)
+	}
+	msg2, _, _, err := serverHS.WriteMessage(nil, nil)
+	if err != nil {
+		t.Fatalf("server write msg2: %v", err)
+	}
+	if _, _, _, err := clientHS.ReadMessage(nil, msg2); err != nil {
+		t.Fatalf("client read msg2: %v", err)
+	}
+	msg3, _, _, err := clientHS.WriteMessage(nil, nil)
+	if err != nil {
+		t.Fatalf("client write msg3: %v", err)
+	}
+	if _, _, _, err := serverHS.ReadMessage(nil, msg3); err != nil {
+		t.Fatalf("server read msg3: %v", err)
+	}
 
 	// After handshake, server can inspect client's static public key
 	clientPubViaServer := serverHS.PeerStatic()
@@ -250,9 +265,17 @@ func TestNoiseXXHandshake_ServerPinning(t *testing.T) {
 	mitmHS, _ := noise.NewServerHandshake(mitm)
 	clientHS, _ := noise.NewClientHandshake(clientKP, legitimateServer.Public)
 
-	msg1, _, _, _ := clientHS.WriteMessage(nil, nil)
-	mitmHS.ReadMessage(nil, msg1)
-	msg2MiTM, _, _, _ := mitmHS.WriteMessage(nil, nil)
+	msg1, _, _, err := clientHS.WriteMessage(nil, nil)
+	if err != nil {
+		t.Fatalf("client write msg1: %v", err)
+	}
+	if _, _, _, err := mitmHS.ReadMessage(nil, msg1); err != nil {
+		t.Fatalf("mitm read msg1: %v", err)
+	}
+	msg2MiTM, _, _, err := mitmHS.WriteMessage(nil, nil)
+	if err != nil {
+		t.Fatalf("mitm write msg2: %v", err)
+	}
 
 	// Client should reject msg2 from MitM because the static key won't match
 	_, _, _, err := clientHS.ReadMessage(nil, msg2MiTM)
