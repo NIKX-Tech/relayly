@@ -278,7 +278,7 @@ func TestNoiseXXHandshake_ServerPinning(t *testing.T) {
 	}
 
 	// Client should reject msg2 from MitM because the static key won't match
-	_, _, _, err := clientHS.ReadMessage(nil, msg2MiTM)
+	_, _, _, err = clientHS.ReadMessage(nil, msg2MiTM)
 
 	// flynn/noise returns a MAC error when the pinned key doesn't match
 	if err == nil {
