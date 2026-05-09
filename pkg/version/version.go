@@ -10,6 +10,11 @@ var (
 	BuildTime = "unknown"
 )
 
+// String returns the version info as a string.
+func String() string {
+	return Info()
+}
+
 // Info returns a formatted version string.
 func Info() string {
 	return fmt.Sprintf("relayly %s (commit=%s built=%s)", Version, Commit, BuildTime)
