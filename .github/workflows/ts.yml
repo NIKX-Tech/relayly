@@ -1,0 +1,73 @@
+name: TypeScript SDK
+
+on:
+  push:
+    branches: [main]
+    paths: ["sdk/ts/**"]
+  pull_request:
+    branches: [main]
+    paths: ["sdk/ts/**"]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: sdk/ts/package-lock.json
+
+      - name: Install dependencies
+        working-directory: sdk/ts
+        run: npm ci
+
+      - name: Type check
+        working-directory: sdk/ts
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: sdk/ts
+        run: npm test
+
+      - name: Build
+        working-directory: sdk/ts
+        run: npm run build
+
+  publish:
+    name: Publish to npm
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: npm
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install & Build
+        working-directory: sdk/ts
+        run: npm ci && npm run build
+
+      - name: Publish (dry run on non-tagged commits)
+        working-directory: sdk/ts
+        run: |
+          if git describe --exact-match --tags HEAD 2>/dev/null; then
+            npm publish
+          else
+            npm publish --dry-run
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

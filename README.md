@@ -85,28 +85,14 @@ go build -o relayly ./cmd/relayly
 ```
 relayly/
 ├── cmd/relayly/main.go           # Entry point
-├── internal/
-│   ├── cli/                      # Cobra CLI commands
-│   │   ├── root.go               # Base command + help
-│   │   ├── start.go              # `relayly start`
-│   │   ├── status.go             # `relayly status`
-│   │   └── pair.go               # `relayly pair <name>`
-│   ├── config/config.go          # Viper config loader
-│   ├── database/
-│   │   ├── db.go                 # SQLite connection + migrations
-│   │   └── pairing.go            # Device CRUD
-│   ├── pairing/pairing.go        # Token generation + device creation
-│   ├── noise/noise.go            # Noise Protocol XX helpers
-│   ├── relay/
-│   │   ├── hub.go                # In-memory session hub
-│   │   ├── client.go             # WS client lifecycle (read/write pumps)
-│   │   └── handler.go            # HTTP → WS upgrade + auth
-│   └── admin/
-│       ├── server.go             # Admin HTTP server + REST API
-│       └── templates/            # Embedded HTMX + Tailwind UI
-├── pkg/
-│   ├── client/client.go          # Reference E2EE client library
-│   └── version/version.go        # Build-time version info
+├── internal/                     # Private server code
+├── sdk/                          # Official Client SDKs
+│   ├── go/                       # Go client library
+│   └── ts/                       # TypeScript/JS client library
+├── examples/                     # Example applications
+│   ├── go/                       # Go SDK examples
+│   └── ts/                       # TS SDK examples
+├── docs/                         # Protocol and architecture documentation
 ├── config/relayly.yaml           # Default configuration
 ├── migrations/001_init.sql       # SQLite schema reference
 ├── Dockerfile                    # Multi-stage, distroless final image
@@ -167,27 +153,43 @@ Client → Server  [msg3: encrypted client static]
 After handshake, all subsequent frames are **opaque encrypted binary** —
 the relay never inspects them.
 
-### E2EE Client (Go)
+### E2EE Client SDKs
+
+We provide official client SDKs for Go and TypeScript in the `sdk/` directory.
+
+**Go SDK Example**
 ```go
-kp, _ := noise.GenerateKeypair()
-noise.SaveKeypair(kp, "~/.relayly/client.key")
+import relayly "github.com/NIKX-Tech/relayly/sdk/go"
 
-c, _ := client.New(client.Options{
-    ServerURL: "ws://your-server:8080/ws",
-    DeviceID:  "your-device-id",
-    Token:     "your-pair-token",
-    Keypair:   kp,
+// Connect to the relay server
+client, _ := relayly.Connect(ctx, "ws://your-server:8080/ws", relayly.Options{
+    DeviceID:   "your-device-id",
+    PrivateKey: yourNoisePrivateKey,
 })
+defer client.Close()
 
-ctx := context.Background()
-go c.Connect(ctx)
+// Accept a pair code from another device
+peer, _ := client.AcceptPair(ctx, "483921")
 
 // Send encrypted message
-c.Send([]byte("hello from device A"))
+client.Send(ctx, peer.ID, []byte("hello from device A"))
 
-// Receive decrypted message
-msg := <-c.Recv()
-fmt.Println(string(msg)) // → "hello from device B"
+// Receive decrypted messages
+msg := <-client.Messages()
+fmt.Println(string(msg.Payload)) // → "hello from device B"
+```
+
+**TypeScript SDK Example**
+```typescript
+import { RelaylyClient } from 'relayly-client';
+
+const client = new RelaylyClient({
+  url: 'ws://your-server:8080/ws',
+  deviceId: 'your-device-id',
+  privateKey: yourNoisePrivateKey,
+});
+
+await client.connect();
 ```
 
 ---

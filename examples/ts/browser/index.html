@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Relayly Browser Example</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f0f13;
+      color: #e5e5ea;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      background: #1c1c1e;
+      border: 1px solid #2c2c2e;
+      border-radius: 16px;
+      padding: 32px;
+      width: 420px;
+      max-width: 95vw;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .status {
+      font-size: 0.85rem;
+      color: #8e8e93;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #3a3a3c;
+      flex-shrink: 0;
+    }
+    .dot.connected { background: #30d158; }
+    .dot.disconnected { background: #ff453a; }
+
+    .pair-box {
+      background: #2c2c2e;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      color: #a78bfa;
+      margin: 8px 0;
+    }
+
+    .code-label { font-size: 0.8rem; color: #8e8e93; margin-bottom: 4px; }
+
+    .qr-img {
+      width: 140px;
+      height: 140px;
+      margin: 12px auto 0;
+      border-radius: 8px;
+      display: block;
+    }
+
+    input, textarea {
+      width: 100%;
+      background: #2c2c2e;
+      border: 1px solid #3a3a3c;
+      border-radius: 8px;
+      color: #e5e5ea;
+      font-size: 0.9rem;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus, textarea:focus { border-color: #a78bfa; }
+    textarea { resize: vertical; min-height: 60px; margin-top: 8px; }
+
+    button {
+      background: linear-gradient(135deg, #7c3aed, #2563eb);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 8px;
+      transition: opacity 0.15s;
+    }
+    button:hover:not(:disabled) { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .messages {
+      background: #2c2c2e;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 16px;
+      min-height: 80px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+
+    .msg-line { margin-bottom: 4px; }
+    .msg-from { color: #60a5fa; font-weight: 600; }
+    .msg-self { color: #a78bfa; font-weight: 600; }
+
+    .section-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #636366;
+      margin: 16px 0 8px;
+    }
+
+    #log {
+      font-size: 0.8rem;
+      color: #8e8e93;
+      margin-top: 12px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>⚡ Relayly Demo</h1>
+
+  <div class="status">
+    <div class="dot disconnected" id="dot"></div>
+    <span id="status-text">Disconnected</span>
+  </div>
+
+  <!-- Server connection -->
+  <div class="section-label">Server</div>
+  <input id="server-url" type="text" value="wss://relay.example.com" placeholder="wss://relay.example.com" />
+  <button id="btn-connect">Connect</button>
+
+  <!-- Pairing -->
+  <div class="section-label" id="pair-section-label" style="display:none">Pairing</div>
+  <div id="pair-section" style="display:none">
+    <div class="pair-box" id="pair-box" style="display:none">
+      <div class="code-label">Share this code with your other device</div>
+      <div class="code" id="pair-code"></div>
+      <img id="qr-img" class="qr-img" alt="QR code" />
+    </div>
+
+    <input id="accept-code" type="text" placeholder="Enter code from other device…" maxlength="6" />
+    <button id="btn-accept">Accept Pairing Code</button>
+    <button id="btn-request">Request Pairing Code</button>
+  </div>
+
+  <!-- Messaging -->
+  <div id="message-section" style="display:none">
+    <div class="section-label">Messages</div>
+    <div class="messages" id="messages"><span style="color:#636366">No messages yet…</span></div>
+    <textarea id="message-input" placeholder="Type a message…" rows="2"></textarea>
+    <button id="btn-send">Send Message</button>
+  </div>
+
+  <div id="log"></div>
+</div>
+
+<script type="module">
+  // NOTE: In a real project, import from 'relayly-client' after npm install.
+  // For this demo, we load from a CDN-compatible build or local dist.
+  // Replace this URL with your actual bundle or run: npm run build in js/
+  import { RelaylyClient, generateKey, encodeBase64, keyPairFromPrivateKey } from '../../dist/index.mjs';
+
+  // ─── Persistent key ────────────────────────────────────────────────────────
+  const STORAGE_KEY = 'relayly_private_key';
+  let keyPair;
+  const savedKey = localStorage.getItem(STORAGE_KEY);
+  if (savedKey) {
+    keyPair = keyPairFromPrivateKey(savedKey);
+    log('🔑 Loaded existing device key');
+  } else {
+    keyPair = generateKey();
+    localStorage.setItem(STORAGE_KEY, encodeBase64(keyPair.privateKey));
+    log('🔑 Generated new device key');
+  }
+
+  // ─── UI refs ───────────────────────────────────────────────────────────────
+  const $ = (id) => document.getElementById(id);
+  const dot = $('dot');
+  const statusText = $('status-text');
+  const btnConnect = $('btn-connect');
+  const btnRequest = $('btn-request');
+  const btnAccept = $('btn-accept');
+  const btnSend = $('btn-send');
+  const messagesEl = $('messages');
+  let currentPeerId = null;
+  let client = null;
+
+  // ─── Connect ───────────────────────────────────────────────────────────────
+  btnConnect.addEventListener('click', async () => {
+    const serverUrl = $('server-url').value.trim();
+    if (!serverUrl) return;
+
+    btnConnect.disabled = true;
+    log('Connecting to ' + serverUrl + '…');
+
+    client = new RelaylyClient(serverUrl, {
+      deviceId: 'browser-' + Math.random().toString(36).slice(2, 7),
+      keyPair,
+      reconnectDelayMs: 2000,
+    });
+
+    client.on('connected', () => {
+      setConnected(true);
+      $('pair-section').style.display = 'block';
+      $('pair-section-label').style.display = 'block';
+      log('✓ Connected & authenticated');
+    });
+
+    client.on('disconnected', (reason) => {
+      setConnected(false);
+      log('✗ Disconnected: ' + reason);
+    });
+
+    client.on('reconnecting', (n) => {
+      log('↻ Reconnecting (attempt ' + n + ')…');
+    });
+
+    client.on('paired', (peer) => {
+      currentPeerId = peer.id;
+      log('✓ Paired with: ' + peer.id);
+      $('pair-box').style.display = 'none';
+      $('message-section').style.display = 'block';
+      appendMessage('system', '✓ Paired with ' + peer.id);
+    });
+
+    client.on('message', (msg) => {
+      appendMessage(msg.from, msg.payload);
+    });
+
+    client.on('error', (err) => {
+      log('✗ Error: ' + err.message);
+    });
+
+    try {
+      await client.connect();
+    } catch (err) {
+      log('✗ Connection failed: ' + err.message);
+      btnConnect.disabled = false;
+    }
+  });
+
+  // ─── Request pair code ─────────────────────────────────────────────────────
+  btnRequest.addEventListener('click', async () => {
+    if (!client) return;
+    btnRequest.disabled = true;
+    log('Requesting pair code…');
+    try {
+      const code = await client.requestPairCode();
+      $('pair-code').textContent = code.shortCode.replace(/(\d{3})(\d{3})/, '$1-$2');
+      const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(code.qrCodeUrl)}`;
+      $('qr-img').src = qrApiUrl;
+      $('pair-box').style.display = 'block';
+      log(`✓ Code ready — expires in ${code.expiresIn}s`);
+    } catch (err) {
+      log('✗ ' + err.message);
+      btnRequest.disabled = false;
+    }
+  });
+
+  // ─── Accept pair code ──────────────────────────────────────────────────────
+  btnAccept.addEventListener('click', async () => {
+    const code = $('accept-code').value.replace(/[^0-9]/g, '').slice(0, 6);
+    if (code.length !== 6) { log('Enter a 6-digit code'); return; }
+    if (!client) return;
+    btnAccept.disabled = true;
+    log(`Accepting code ${code}…`);
+    try {
+      const peer = await client.acceptPair(code);
+      currentPeerId = peer.id;
+      log('✓ Paired with: ' + peer.id);
+      $('message-section').style.display = 'block';
+      appendMessage('system', '✓ Paired with ' + peer.id);
+    } catch (err) {
+      log('✗ ' + err.message);
+      btnAccept.disabled = false;
+    }
+  });
+
+  // ─── Send ──────────────────────────────────────────────────────────────────
+  btnSend.addEventListener('click', async () => {
+    const text = $('message-input').value.trim();
+    if (!text || !currentPeerId || !client) return;
+    try {
+      await client.send(currentPeerId, text);
+      appendMessage('you', text);
+      $('message-input').value = '';
+    } catch (err) {
+      log('✗ Send failed: ' + err.message);
+    }
+  });
+
+  $('message-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      btnSend.click();
+    }
+  });
+
+  // ─── Helpers ───────────────────────────────────────────────────────────────
+  function setConnected(ok) {
+    dot.className = 'dot ' + (ok ? 'connected' : 'disconnected');
+    statusText.textContent = ok ? 'Connected' : 'Disconnected';
+  }
+
+  function appendMessage(from, text) {
+    if (messagesEl.querySelector('span')) messagesEl.innerHTML = '';
+    const line = document.createElement('div');
+    line.className = 'msg-line';
+    const fromEl = document.createElement('span');
+    fromEl.className = from === 'you' ? 'msg-self' : (from === 'system' ? '' : 'msg-from');
+    fromEl.textContent = from === 'system' ? '' : `[${from}] `;
+    line.appendChild(fromEl);
+    line.appendChild(document.createTextNode(text));
+    messagesEl.appendChild(line);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function log(msg) {
+    const el = $('log');
+    el.textContent = msg;
+  }
+</script>
+</body>
+</html>

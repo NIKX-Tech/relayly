@@ -48,6 +48,7 @@ make lint
 
 ## Architecture Guidelines
 
+- **Monorepo Structure:** The project is a monorepo. The core server code lives in `cmd/` and `internal/`. The official client SDKs (Go, TypeScript) are located in `sdk/`. Examples using the SDKs are in `examples/`.
 - **Keep it simple:** Relayly is designed to be extremely simple to run. Avoid adding complex dependencies (especially CGo).
 - **Security first:** All data payloads must be end-to-end encrypted using the Noise protocol. The relay server must never have access to plaintext data.
 - **Admin UI:** Changes to the Admin UI should use HTMX and Tailwind CSS, and must remain embedded in the Go binary without requiring external assets to be served or a separate build step (Tailwind is loaded via CDN for simplicity in the admin interface).
