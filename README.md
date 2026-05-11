@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD033 -->
 # Relayly
 
 <img src="docs/images/logo.png" width="70" alt="Relayly Logo">
@@ -5,7 +6,6 @@
 **Lightweight, self-hosted WebSocket relay for local-first, end-to-end encrypted device communication.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/NIKX-Tech/relayly/ci.yml?branch=main&style=flat-square&label=build)](https://github.com/NIKX-Tech/relayly/actions/workflows/ci.yml)
-[![Go Report Card](https://img.shields.io/goreportcard/report/github.com/NIKX-Tech/relayly?style=flat-square)](https://goreportcard.com/report/github.com/NIKX-Tech/relayly)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/NIKX-Tech/relayly?label=openssf%20scorecard&style=flat-square)](https://securityscorecards.dev/projects/github.com/NIKX-Tech/relayly)
 [![CodeQL](https://img.shields.io/github/actions/workflow/status/NIKX-Tech/relayly/codeql.yml?branch=main&label=codeql&style=flat-square)](https://github.com/NIKX-Tech/relayly/actions/workflows/codeql.yml)
 [![License](https://img.shields.io/github/license/NIKX-Tech/relayly?style=flat-square&color=blue)](https://opensource.org/licenses/MIT)
@@ -21,6 +21,8 @@
 [![Go Reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/NIKX-Tech/relayly)
 [![SDK: Go](https://img.shields.io/badge/SDK-Go-00ADD8?style=flat-square&logo=go&logoColor=white)](https://github.com/NIKX-Tech/relayly/tree/main/sdk/go)
 [![SDK: TypeScript](https://img.shields.io/badge/SDK-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://github.com/NIKX-Tech/relayly/tree/main/sdk/ts)
+<br>
+[![Website](https://img.shields.io/badge/website-relayly.app-4F46E5?style=flat-square&logo=google-chrome&logoColor=white)](https://relayly.app)
 
 Relayly enables trustless message routing between your own devices (phone, laptop, desktop, etc.) through a server you control. All communication is encrypted using the [Noise Protocol](https://noiseprotocol.org/), ensuring the relay server only ever handles opaque cryptographic blobs.
 
