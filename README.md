@@ -1,5 +1,7 @@
 # Relayly
 
+<img src="docs/images/logo.png" width="70" alt="Relayly Logo">
+
 **Lightweight, self-hosted WebSocket relay for local-first, end-to-end encrypted device communication.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/NIKX-Tech/relayly/ci.yml?branch=main&style=flat-square&label=build)](https://github.com/NIKX-Tech/relayly/actions/workflows/ci.yml)
@@ -81,7 +83,9 @@ sequenceDiagram
 ```
 
 ### Encryption Details
+
 Relayly uses **Noise Protocol XX** for the initial handshake and subsequent message transport. This provides:
+
 - **Mutual Authentication**: Both devices verify each other's static public keys.
 - **Forward Secrecy**: Session keys are ephemeral and discarded after use.
 - **Zero-Knowledge Relay**: The server handles zero plaintext data.
@@ -220,6 +224,7 @@ Clients connect to:
 `ws://<host>:<port>/ws?device_id=<uuid>&token=<pair-token>`
 
 ### Noise XX Handshake (3 messages)
+
 1. **Client → Server**: [msg1: ephemeral pubkey]
 2. **Server → Client**: [msg2: encrypted server static + ephemeral]
 3. **Client → Server**: [msg3: encrypted client static]
@@ -239,6 +244,7 @@ relay.yourdomain.com {
 ```
 
 ### Security checklist
+
 - [ ] Run behind TLS (Caddy / nginx)
 - [ ] Bind admin UI to `127.0.0.1` (default)
 - [ ] Mount `/data` as a persistent volume (contains DB + keypair)
@@ -249,6 +255,7 @@ relay.yourdomain.com {
 ## 🛡️ Security & Privacy
 
 Relayly is built on the principle of **Privacy by Design**:
+
 - **Zero Data Harvesting**: No accounts, emails, or tracking.
 - **Public Key Locking**: Once a device connects, the server "locks" it to that public key. Even a compromised server cannot swap keys without manual admin intervention.
 - **Auditability**: Small, dependency-light codebase written in memory-safe Go.
