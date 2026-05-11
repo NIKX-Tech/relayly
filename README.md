@@ -16,7 +16,6 @@
 [![GitHub Stars](https://img.shields.io/github/stars/NIKX-Tech/relayly?style=flat-square&color=yellow)](https://github.com/NIKX-Tech/relayly/stargazers)
 [![Dependabot](https://img.shields.io/badge/dependabot-enabled-025e8a?logo=dependabot&style=flat-square)](https://github.com/NIKX-Tech/relayly/blob/main/.github/dependabot.yml)
 <br>
-[![Discord](https://img.shields.io/badge/discord-join%20chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/cTFMfk6V7)
 [![Sponsor GitHub](https://img.shields.io/badge/sponsor-GitHub-EA4AAA?style=flat-square&logo=github-sponsors)](https://github.com/sponsors/NIKX-Tech)
 [![Sponsor Open Collective](https://img.shields.io/badge/sponsor-Open%20Collective-00A0E0?style=flat-square&logo=opencollective)](https://opencollective.com/nikx-technologies/projects/relayly)
 [![Go Reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/NIKX-Tech/relayly)
@@ -24,6 +23,7 @@
 [![SDK: TypeScript](https://img.shields.io/badge/SDK-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://github.com/NIKX-Tech/relayly/tree/main/sdk/ts)
 <br>
 [![Website](https://img.shields.io/badge/website-relayly.app-4F46E5?style=flat-square&logo=google-chrome&logoColor=white)](https://relayly.app)
+[![Discord](https://img.shields.io/badge/discord-join%20chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/cTFMfk6V7)
 
 Relayly enables trustless message routing between your own devices (phone, laptop, desktop, etc.) through a server you control. All communication is encrypted using the [Noise Protocol](https://noiseprotocol.org/), ensuring the relay server only ever handles opaque cryptographic blobs.
 
