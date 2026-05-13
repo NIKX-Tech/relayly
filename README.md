@@ -108,7 +108,22 @@ docker compose up --build -d
 
 # Register your first device
 docker exec relayly /relayly pair "My Device"
+
+# Want to test it? Try the Chat Demo:
+# cd examples/go/chat && ./setup.sh
 ```
+
+---
+
+## 🎮 Interactive Examples
+
+Check out the `examples/` directory for ready-to-run implementations:
+
+| Example | Language | Description |
+|---|---|---|
+| [**Chat Demo**](examples/go/chat) | Go | **(Recommended)** Live E2EE chat between two terminals |
+| [Basic Echo](examples/go/basic) | Go | Simplest possible connection and message loop |
+| [Pair & Send](examples/go/pair-and-send) | Go | CLI-based pairing and single message exchange |
 
 ### 2. Server Setup (Local)
 
