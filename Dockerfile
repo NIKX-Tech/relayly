@@ -1,5 +1,5 @@
 # ── Stage 1: Builder ──────────────────────────────────────────────────────────
-FROM golang:1.24-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Install build essentials (pure-Go sqlite via modernc needs no C compiler)
 RUN apk add --no-cache git make
