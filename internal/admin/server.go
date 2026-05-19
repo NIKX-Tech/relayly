@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/NIKX-Tech/relayly/internal/database"
@@ -19,12 +20,15 @@ import (
 //go:embed templates/*.html templates/partials/*.html
 var templateFS embed.FS
 
+//go:embed static
+var staticFS embed.FS
+
 // Server is the admin HTTP server.
 type Server struct {
 	hub   *relay.Hub
 	db    *database.DB
 	log   *zap.Logger
-	tmpls *template.Template
+	subFS fs.FS
 	mux   *http.ServeMux
 }
 
@@ -34,12 +38,8 @@ func New(hub *relay.Hub, db *database.DB, log *zap.Logger) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	tmpls, err := template.ParseFS(subFS, "*.html", "partials/*.html")
-	if err != nil {
-		return nil, err
-	}
 
-	s := &Server{hub: hub, db: db, log: log, tmpls: tmpls, mux: http.NewServeMux()}
+	s := &Server{hub: hub, db: db, log: log, subFS: subFS, mux: http.NewServeMux()}
 	s.registerRoutes()
 	return s, nil
 }
@@ -50,6 +50,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) registerRoutes() {
+	// Static assets (logo, etc.)
+	s.mux.Handle("GET /static/", http.FileServer(http.FS(staticFS)))
+
 	// Pages
 	s.mux.HandleFunc("GET /", s.handleIndex)
 	s.mux.HandleFunc("GET /devices", s.handleDevices)
@@ -88,6 +91,7 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, "devices.html", map[string]any{
+		"Version": version.Version,
 		"Devices": devices,
 		"Online":  onlineSet(s.hub.ConnectedDevices()),
 	})
@@ -171,13 +175,34 @@ func (s *Server) apiDevices(w http.ResponseWriter, r *http.Request) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+// render parses templates fresh per call to avoid {{define}} conflicts when
+// multiple pages define the same block name in a shared template set.
+// It injects a Year key into any map[string]any data automatically.
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// Try the name as provided, then try the base name if it fails
-	err := s.tmpls.ExecuteTemplate(w, name, data)
+	if m, ok := data.(map[string]any); ok {
+		if _, exists := m["Year"]; !exists {
+			m["Year"] = time.Now().Year()
+		}
+	}
+	var (
+		t   *template.Template
+		err error
+	)
+	if strings.HasSuffix(name, ".html") {
+		// Full page: base + partials + this page only.
+		t, err = template.New("").ParseFS(s.subFS, "base.html", "partials/*.html", name)
+	} else {
+		// Named partial defined via {{define}} inside partials/.
+		t, err = template.New("").ParseFS(s.subFS, "partials/*.html")
+	}
 	if err != nil {
-		s.log.Error("template render error", zap.String("template", name), zap.Error(err))
+		s.log.Error("template parse error", zap.String("template", name), zap.Error(err))
 		http.Error(w, "render error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := t.ExecuteTemplate(w, name, data); err != nil {
+		s.log.Error("template render error", zap.String("template", name), zap.Error(err))
 	}
 }
 
