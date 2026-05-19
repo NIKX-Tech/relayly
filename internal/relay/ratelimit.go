@@ -44,7 +44,6 @@ func (b *tokenBucket) allow() bool {
 // It uses a sliding-window (actually fixed-window per IP) approach with
 // a background goroutine to periodically evict stale entries.
 type IPRateLimiter struct {
-	mu      sync.Mutex
 	buckets sync.Map // IP string → *tokenBucket
 
 	maxTokens int
