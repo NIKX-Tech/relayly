@@ -14,9 +14,10 @@ type Device struct {
 	Name       string
 	PublicKey  string
 	PairToken  string
-	PairedWith *string // nil if not yet paired
+	PairedWith *string    // nil if not yet paired
 	CreatedAt  time.Time
 	LastSeen   *time.Time
+	ExpiresAt  *time.Time // nil means no expiry (existing rows)
 }
 
 // PairedWithShort returns the first 8 characters of the paired device ID, or empty string.
@@ -39,9 +40,9 @@ var ErrAlreadyPaired = errors.New("device already paired")
 // CreateDevice inserts a new device record.
 func (db *DB) CreateDevice(d *Device) error {
 	_, err := db.Exec(`
-		INSERT INTO devices (id, name, public_key, pair_token, created_at)
-		VALUES (?, ?, ?, ?, ?)`,
-		d.ID, d.Name, d.PublicKey, d.PairToken, d.CreatedAt,
+		INSERT INTO devices (id, name, public_key, pair_token, created_at, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		d.ID, d.Name, d.PublicKey, d.PairToken, d.CreatedAt, d.ExpiresAt,
 	)
 	if err != nil {
 		return fmt.Errorf("CreateDevice: %w", err)
@@ -52,7 +53,7 @@ func (db *DB) CreateDevice(d *Device) error {
 // GetDeviceByToken retrieves a device by its pairing token.
 func (db *DB) GetDeviceByToken(token string) (*Device, error) {
 	return db.scanDevice(
-		db.QueryRow(`SELECT id, name, public_key, pair_token, paired_with, created_at, last_seen
+		db.QueryRow(`SELECT id, name, public_key, pair_token, paired_with, created_at, last_seen, expires_at
 			FROM devices WHERE pair_token = ?`, token),
 	)
 }
@@ -60,7 +61,7 @@ func (db *DB) GetDeviceByToken(token string) (*Device, error) {
 // GetDeviceByID retrieves a device by its UUID.
 func (db *DB) GetDeviceByID(id string) (*Device, error) {
 	return db.scanDevice(
-		db.QueryRow(`SELECT id, name, public_key, pair_token, paired_with, created_at, last_seen
+		db.QueryRow(`SELECT id, name, public_key, pair_token, paired_with, created_at, last_seen, expires_at
 			FROM devices WHERE id = ?`, id),
 	)
 }
@@ -68,7 +69,7 @@ func (db *DB) GetDeviceByID(id string) (*Device, error) {
 // ListDevices returns all registered devices ordered by creation time.
 func (db *DB) ListDevices() ([]*Device, error) {
 	rows, err := db.Query(`
-		SELECT id, name, public_key, pair_token, paired_with, created_at, last_seen
+		SELECT id, name, public_key, pair_token, paired_with, created_at, last_seen, expires_at
 		FROM devices ORDER BY created_at`)
 	if err != nil {
 		return nil, fmt.Errorf("ListDevices: %w", err)
@@ -149,10 +150,11 @@ func (db *DB) scanDevice(scanner interface {
 	d := &Device{}
 	var paired sql.NullString
 	var lastSeen sql.NullTime
+	var expiresAt sql.NullTime
 
 	err := scanner.Scan(
 		&d.ID, &d.Name, &d.PublicKey, &d.PairToken,
-		&paired, &d.CreatedAt, &lastSeen,
+		&paired, &d.CreatedAt, &lastSeen, &expiresAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -166,6 +168,9 @@ func (db *DB) scanDevice(scanner interface {
 	}
 	if lastSeen.Valid {
 		d.LastSeen = &lastSeen.Time
+	}
+	if expiresAt.Valid {
+		d.ExpiresAt = &expiresAt.Time
 	}
 
 	return d, nil

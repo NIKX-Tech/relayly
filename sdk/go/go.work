@@ -1,0 +1,8 @@
+go 1.24
+
+use (
+	.
+	../../examples/go/basic
+	../../examples/go/pair-and-send
+	../../examples/go/clipboard-sync
+)
