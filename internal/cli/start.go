@@ -9,10 +9,12 @@ import (
 	"syscall"
 
 	"github.com/NIKX-Tech/relayly/internal/admin"
+	"github.com/NIKX-Tech/relayly/internal/api"
 	"github.com/NIKX-Tech/relayly/internal/config"
 	"github.com/NIKX-Tech/relayly/internal/database"
 	"github.com/NIKX-Tech/relayly/internal/noise"
 	"github.com/NIKX-Tech/relayly/internal/relay"
+	"github.com/NIKX-Tech/relayly/pkg/version"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
@@ -79,8 +81,12 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// ── Relay HTTP server ─────────────────────────────────────────────────
 	relayMux := http.NewServeMux()
-	relayMux.HandleFunc("/ws", relay.Handler(hub, db, cfg, log, kp))
+	relayMux.Handle("/ws", relay.RateLimitMiddleware(relay.Handler(hub, db, cfg, log, kp)))
 	relayMux.HandleFunc("/health", relay.StatusHandler(hub))
+
+	// Mount REST API under /api/
+	apiHandler := api.New(db, hub, log, version.Version)
+	relayMux.Handle("/api/", apiHandler)
 
 	relayServer := &http.Server{
 		Addr:    cfg.Addr(),
@@ -106,29 +112,35 @@ func runStart(cmd *cobra.Command, args []string) error {
 		os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Start servers
+	serverErr := make(chan error, 2)
+
 	go func() {
 		log.Info("relay server listening", zap.String("addr", cfg.Addr()))
-		var startErr error
+		var err error
 		if cfg.TLS.Enabled {
-			startErr = relayServer.ListenAndServeTLS(cfg.TLS.Cert, cfg.TLS.Key)
+			err = relayServer.ListenAndServeTLS(cfg.TLS.Cert, cfg.TLS.Key)
 		} else {
-			startErr = relayServer.ListenAndServe()
+			err = relayServer.ListenAndServe()
 		}
-		if startErr != nil && startErr != http.ErrServerClosed {
-			log.Fatal("relay server error", zap.Error(startErr))
+		if err != nil && err != http.ErrServerClosed {
+			serverErr <- fmt.Errorf("relay server on %s: %w", cfg.Addr(), err)
 		}
 	}()
 
 	if adminServer != nil {
 		go func() {
 			if err := adminServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Fatal("admin server error", zap.Error(err))
+				serverErr <- fmt.Errorf("admin server on %s: %w", cfg.AdminAddr(), err)
 			}
 		}()
 	}
 
-	<-ctx.Done()
+	select {
+	case err := <-serverErr:
+		return err
+	case <-ctx.Done():
+	}
+
 	log.Info("shutting down...")
 	_ = relayServer.Shutdown(context.Background())
 	if adminServer != nil {
