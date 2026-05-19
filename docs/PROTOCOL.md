@@ -70,9 +70,17 @@ Client (initiator)          Server (responder)
 - After the handshake completes, two cipher states are derived:
   - **cs1** (initiator→responder): server uses this to decrypt frames from the client
   - **cs2** (responder→initiator): server uses this to encrypt frames sent to the client
-- On the first successful handshake the server persists the client's static public key. Subsequent connections from the same device must present the same public key; a mismatch closes the connection.
+- On the first successful handshake the server persists the client's static public key. Subsequent connections from the same device must present the same public key; a mismatch closes the connection. The server never resets this binding automatically.
 
-If the handshake fails the server closes the WebSocket connection without sending an error frame.
+If the handshake fails the server calls `conn.Close()` — a raw TCP close with **no WebSocket close frame and no close code**. The client will observe an abnormal closure (e.g. code `1006` in browser WebSocket APIs).
+
+Handshake failure conditions:
+
+| Condition | Details |
+|-----------|---------|
+| Malformed Noise message | msg1 or msg3 fails Noise protocol parsing (bad MAC, wrong length, etc.) |
+| Deadline exceeded | No message received within the configured deadline (default 60 s, `websocket.deadline`) |
+| Public key mismatch | Device has a previously stored static public key and the current handshake presents a different one |
 
 ---
 
@@ -87,9 +95,16 @@ The relay never inspects the decrypted plaintext. It decrypts only to verify the
 
 ### Message routing
 
-When the server receives a decrypted frame from device A, it looks up the device that A is paired with (stored in the `paired_with` DB column) and forwards the plaintext to that peer, encrypting it with the peer's cs2.
+When the server receives a frame from device A it decrypts it, then looks up A's paired device (stored in the `paired_with` DB column) and re-encrypts the plaintext for that peer using the peer's cs2.
 
-If the paired device is not currently connected, the frame is **silently dropped**. The client is responsible for retrying.
+Frames are **silently dropped** in two cases — the server sends no acknowledgement or error in either:
+
+| Case | Condition |
+|------|-----------|
+| Device not paired | A's `paired_with` column is NULL (no pairing has been established yet) |
+| Peer offline | A is paired but the peer device is not currently connected |
+
+The client is responsible for detecting lost messages and retrying.
 
 ---
 
