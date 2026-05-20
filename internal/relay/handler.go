@@ -2,6 +2,7 @@
 package relay
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/NIKX-Tech/relayly/internal/config"
 	"github.com/NIKX-Tech/relayly/internal/database"
 	"github.com/NIKX-Tech/relayly/internal/noise"
+	"github.com/NIKX-Tech/relayly/pkg/version"
 	"go.uber.org/zap"
 )
 
@@ -45,6 +47,13 @@ func Handler(hub *Hub, db *database.DB, cfg *config.Config, log *zap.Logger, ser
 		if device.PairToken != token {
 			log.Warn("invalid token", zap.String("device_id", deviceID))
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Check pairing code expiry
+		if device.ExpiresAt != nil && time.Now().After(*device.ExpiresAt) {
+			log.Warn("pairing code expired", zap.String("device_id", deviceID))
+			http.Error(w, "pairing code expired", http.StatusUnauthorized)
 			return
 		}
 
@@ -89,26 +98,24 @@ func Handler(hub *Hub, db *database.DB, cfg *config.Config, log *zap.Logger, ser
 	}
 }
 
-// StatusHandler returns a simple JSON health endpoint for the relay.
-func StatusHandler(hub *Hub) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		uptime := hub.Uptime().Round(time.Second)
-		connected := hub.ConnectedCount()
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok","connected":` +
-			itoa(connected) + `,"uptime":"` + uptime.String() + `"}`))
-	}
+// statusResponse is the JSON shape returned by StatusHandler.
+type statusResponse struct {
+	Status           string `json:"status"`
+	Version          string `json:"version"`
+	UptimeSeconds    int64  `json:"uptime_seconds"`
+	ConnectedDevices int    `json:"connected_devices"`
 }
 
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
+// StatusHandler returns a JSON health endpoint for the relay.
+func StatusHandler(hub *Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		resp := statusResponse{
+			Status:           "ok",
+			Version:          version.Version,
+			UptimeSeconds:    int64(hub.Uptime().Seconds()),
+			ConnectedDevices: hub.ConnectedCount(),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
 	}
-	buf := make([]byte, 0, 10)
-	for n > 0 {
-		buf = append([]byte{byte('0' + n%10)}, buf...)
-		n /= 10
-	}
-	return string(buf)
 }

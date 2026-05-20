@@ -49,11 +49,11 @@ Relayly enables trustless message routing between your own devices (phone, lapto
 
 | Feature | Detail |
 |---|---|
-| 🔐 **End-to-End Encryption** | Noise Protocol XX (X25519, ChaChaPoly) — server never sees plaintext |
-| 📱 **Device Pairing** | 6-digit short code or QR code — no accounts required |
+| 🔐 **End-to-End Encryption** | Noise Protocol XX (X25519, ChaChaPoly), server never sees plaintext |
+| 📱 **Device Pairing** | 6-digit short code or QR code, no accounts required |
 | ⚡ **Real-time Forwarding** | Low-latency WebSocket relaying with minimal server overhead |
 | ♻️ **Auto-reconnect** | Exponential-backoff reconnection built into SDKs |
-| 🗄️ **Zero-Config Storage** | Embedded SQLite storage — no external database required |
+| 🗄️ **Zero-Config Storage** | Embedded SQLite storage, no external database required |
 | 🐳 **Infrastructure Ready** | Pre-built Docker images and single portable binary |
 | 🖥️ **Interactive Admin** | HTMX-powered dashboard for device and pairing management |
 | 🔑 **Trustless Architecture** | Public Key Locking prevents server-side impersonation |
@@ -247,7 +247,7 @@ Clients connect to:
 2. **Server → Client**: [msg2: encrypted server static + ephemeral]
 3. **Client → Server**: [msg3: encrypted client static]
 
-After handshake, all subsequent frames are **opaque encrypted binary** — the relay never inspects them.
+After handshake, all subsequent frames are **opaque encrypted binary**, the relay never inspects them.
 
 ---
 

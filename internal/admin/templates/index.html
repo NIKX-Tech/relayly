@@ -5,35 +5,78 @@
 {{define "content"}}
 <div class="max-w-5xl mx-auto px-6 py-10">
 
-  <!-- Hero stats -->
-  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+  <!-- Page header -->
+  <div class="mb-8">
+    <h1 class="text-2xl font-bold text-white">Dashboard</h1>
+    <p class="text-sm text-gray-500 mt-1">Live relay server status</p>
+  </div>
 
-    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col gap-1">
-      <span class="text-xs uppercase tracking-widest text-gray-500 font-semibold">Connected</span>
-      <div class="flex items-center gap-2 mt-1">
-        <span class="status-dot inline-block w-2.5 h-2.5 rounded-full {{if .Connected}}bg-green-400{{else}}bg-gray-600{{end}}"></span>
-        <span class="text-3xl font-bold text-white">{{.Connected}}</span>
-        <span class="text-gray-400 text-sm">device{{if ne .Connected 1}}s{{end}}</span>
+  <!-- Stats grid -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+
+    <!-- Connected devices -->
+    <div class="bg-gray-800 rounded-xl border border-gray-700 p-5 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <span class="text-xs uppercase tracking-widest text-gray-500 font-semibold">Connected</span>
+        <div class="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
+          <svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+            <circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/>
+          </svg>
+        </div>
+      </div>
+      <div class="flex items-end gap-2">
+        <span class="status-dot inline-block w-2 h-2 rounded-full flex-shrink-0 mb-1 {{if .Connected}}bg-green-400{{else}}bg-gray-600{{end}}"></span>
+        <span class="text-3xl font-bold text-white leading-none">{{.Connected}}</span>
+        <span class="text-gray-400 text-sm mb-0.5">device{{if ne .Connected 1}}s{{end}}</span>
       </div>
     </div>
 
-    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col gap-1">
-      <span class="text-xs uppercase tracking-widest text-gray-500 font-semibold">Uptime</span>
-      <span class="text-3xl font-bold text-white mt-1">{{.Uptime}}</span>
+    <!-- Uptime -->
+    <div class="bg-gray-800 rounded-xl border border-gray-700 p-5 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <span class="text-xs uppercase tracking-widest text-gray-500 font-semibold">Uptime</span>
+        <div class="w-8 h-8 rounded-lg bg-relay-500/10 flex items-center justify-center">
+          <svg class="w-4 h-4 text-relay-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </div>
+      </div>
+      <span class="text-3xl font-bold text-white leading-none">{{.Uptime}}</span>
     </div>
 
-    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col gap-1">
-      <span class="text-xs uppercase tracking-widest text-gray-500 font-semibold">Total Devices</span>
-      <span class="text-3xl font-bold text-white mt-1">{{len .Devices}}</span>
+    <!-- Total devices -->
+    <div class="bg-gray-800 rounded-xl border border-gray-700 p-5 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <span class="text-xs uppercase tracking-widest text-gray-500 font-semibold">Total Devices</span>
+        <div class="w-8 h-8 rounded-lg bg-gray-700 flex items-center justify-center">
+          <svg class="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+        </div>
+      </div>
+      <span class="text-3xl font-bold text-white leading-none">{{len .Devices}}</span>
     </div>
 
   </div>
 
   <!-- Devices table (auto-refreshes every 5s via HTMX) -->
-  <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-    <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
-      <h2 class="font-semibold text-white">Registered Devices</h2>
-      <a href="/devices" class="text-xs text-relay-500 hover:underline">Manage →</a>
+  <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-700 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+          <line x1="8" y1="21" x2="16" y2="21"/>
+          <line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        <h2 class="font-semibold text-white">Registered Devices</h2>
+      </div>
+      <a href="/devices" class="text-xs text-relay-400 hover:text-relay-300 transition-colors">Manage →</a>
     </div>
 
     <div

@@ -11,12 +11,8 @@ import (
 	_ "modernc.org/sqlite" // register the sqlite3 driver
 )
 
-// initSQL contains the initial schema SQL, read at Open() time.
-// We read from the embedded string passed in (or bundled separately).
-// To keep the package dependency-free from embed paths, the migration
-// SQL is passed in explicitly by the caller or loaded from migrations/.
+// initSQL contains the base schema (version 1).
 const initSQL = `
--- Relayly schema: initial migration
 CREATE TABLE IF NOT EXISTS devices (
     id          TEXT PRIMARY KEY,
     name        TEXT    NOT NULL,
@@ -37,6 +33,10 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (1);
 `
+
+// migration2SQL adds the expires_at column for pairing code TTL (version 2).
+// The column is nullable; existing rows have no expiry (NULL).
+const migration2SQL = `ALTER TABLE devices ADD COLUMN expires_at DATETIME;`
 
 // DB wraps a *sql.DB with Relayly-specific helpers.
 type DB struct {
@@ -71,8 +71,28 @@ func Open(path string) (*DB, error) {
 	return db, nil
 }
 
-// migrate runs the embedded schema SQL idempotently (uses IF NOT EXISTS).
+// migrate runs schema migrations idempotently.
 func (db *DB) migrate() error {
-	_, err := db.Exec(initSQL)
-	return err
+	// Version 1: base schema
+	if _, err := db.Exec(initSQL); err != nil {
+		return fmt.Errorf("migration v1: %w", err)
+	}
+
+	// Version 2: add expires_at to devices.
+	// We check schema_migrations first to make it idempotent.
+	var applied int
+	row := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 2`)
+	if err := row.Scan(&applied); err != nil {
+		return fmt.Errorf("checking migration v2: %w", err)
+	}
+	if applied == 0 {
+		if _, err := db.Exec(migration2SQL); err != nil {
+			return fmt.Errorf("migration v2 alter: %w", err)
+		}
+		if _, err := db.Exec(`INSERT OR IGNORE INTO schema_migrations(version) VALUES (2)`); err != nil {
+			return fmt.Errorf("migration v2 record: %w", err)
+		}
+	}
+
+	return nil
 }
