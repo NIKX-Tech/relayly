@@ -50,8 +50,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) registerRoutes() {
-	// Static assets (logo, etc.)
+	// Static assets (logo, favicon, etc.)
 	s.mux.Handle("GET /static/", http.FileServer(http.FS(staticFS)))
+	// Browsers request /favicon.ico by default regardless of <link> tags.
+	s.mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/static/favicon.ico", http.StatusMovedPermanently)
+	})
 
 	// Pages
 	s.mux.HandleFunc("GET /", s.handleIndex)
