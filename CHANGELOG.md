@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.2.0...relayly-v0.3.0) (2026-05-21)
+
+
+### Features
+
+* add live chat demo and fix relay transport encryption ([a1e0f20](https://github.com/NIKX-Tech/relayly/commit/a1e0f20c4a34284570c78bac8755742fc8ec7a5b))
+* add live chat demo and fix relay transport encryption ([311ae69](https://github.com/NIKX-Tech/relayly/commit/311ae692dd0d09b838d02ef121af01ca42504116))
+* add pairing expiry, rate limiting, REST API, and new examples ([8874531](https://github.com/NIKX-Tech/relayly/commit/88745315f82ed1aeda2b6e775fc34b28793a9802))
+* fix admin favicon, add API tests, and cut v0.3.0 changelog ([a4feccb](https://github.com/NIKX-Tech/relayly/commit/a4feccbb6cf437869244d5ac1ffc566e73df708c))
+* fix admin favicon, add API tests, and cut v0.3.0 changelog ([a46381b](https://github.com/NIKX-Tech/relayly/commit/a46381b43146e3568092cf623eaa8b22c99563d5))
+* rebrand admin UI with logo, polished layout, and page-routing fix ([e964cb3](https://github.com/NIKX-Tech/relayly/commit/e964cb36129513bbabd7bdc66daaf7d02463dc5c))
+
+
+### Bug Fixes
+
+* update readme badges ([3b6b13c](https://github.com/NIKX-Tech/relayly/commit/3b6b13c2b5eb95f09ef7ddb736128eeaa00ee2e1))
+
 ## [0.3.0] - 2026-05-20
 
 ### Added
