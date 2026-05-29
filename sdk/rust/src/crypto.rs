@@ -24,7 +24,7 @@ impl PrivateKey {
     }
 
     pub fn to_base64(&self) -> String {
-        STANDARD.encode(self.0.as_bytes())
+        STANDARD.encode(self.0.to_bytes())
     }
 
     pub fn from_base64(s: &str) -> Result<Self, Error> {
