@@ -1,0 +1,26 @@
+[package]
+name = "relayly"
+version = "0.3.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Rust SDK for Relayly - self-hosted end-to-end encrypted WebSocket relay"
+license = "MIT"
+repository = "https://github.com/NIKX-Tech/relayly"
+keywords = ["relay", "websocket", "nacl", "encryption", "local-first"]
+categories = ["network-programming", "cryptography", "asynchronous"]
+readme = "README.md"
+
+[dependencies]
+tokio = { version = "1", features = ["rt", "sync", "time", "net", "macros"] }
+tokio-tungstenite = { version = "0.23", features = ["native-tls"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+crypto_box = { version = "0.9", features = ["salsa20"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+thiserror = "2"
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tempfile = "3"

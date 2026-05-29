@@ -18,10 +18,10 @@
 <br>
 [![Sponsor GitHub](https://img.shields.io/badge/sponsor-GitHub-EA4AAA?style=flat-square&logo=github-sponsors)](https://github.com/sponsors/NIKX-Tech)
 [![Sponsor Open Collective](https://img.shields.io/badge/sponsor-Open%20Collective-00A0E0?style=flat-square&logo=opencollective)](https://opencollective.com/nikx-technologies/projects/relayly)
-[![Go Reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/NIKX-Tech/relayly)
 [![SDK: Go](https://img.shields.io/badge/SDK-Go-00ADD8?style=flat-square&logo=go&logoColor=white)](https://pkg.go.dev/github.com/NIKX-Tech/relayly/sdk/go)
 [![SDK: TypeScript](https://img.shields.io/badge/SDK-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.npmjs.com/package/relayly)
 [![SDK: Python](https://img.shields.io/badge/SDK-Python-3776AB?style=flat-square&logo=python&logoColor=white)](https://pypi.org/project/relayly/)
+[![SDK: Rust](https://img.shields.io/badge/SDK-Rust-CE422B?style=flat-square&logo=rust&logoColor=white)](https://crates.io/crates/relayly)
 <br>
 [![Website](https://img.shields.io/badge/website-relayly.app-4F46E5?style=flat-square&logo=google-chrome&logoColor=white)](https://relayly.app)
 [![Discord](https://img.shields.io/badge/discord-join%20chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/cTFMfk6V7)
@@ -214,6 +214,43 @@ asyncio.run(main())
 ```
 
 [pypi.org/project/relayly](https://pypi.org/project/relayly/)
+
+### Rust SDK
+
+```toml
+[dependencies]
+relayly = "0.3"
+tokio = { version = "1", features = ["full"] }
+```
+
+```rust
+use relayly::{connect, load_or_generate_key, Options};
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let key = load_or_generate_key(Path::new("~/.relayly/device.key"))?;
+    let (client, mut messages) = connect("wss://your-server", Options {
+        device_id: "my-laptop".into(),
+        private_key: key,
+        ..Default::default()
+    }).await?;
+
+    tokio::spawn(async move {
+        while let Some(msg) = messages.recv().await {
+            println!("[{}] {}", msg.from, String::from_utf8_lossy(&msg.payload));
+        }
+    });
+
+    let code = client.request_pair_code().await?;
+    println!("Share this code: {}", code.short);
+    let peer = code.wait().await?;
+    client.send(&peer.id, b"hello!").await?;
+    Ok(())
+}
+```
+
+[crates.io/crates/relayly](https://crates.io/crates/relayly)
 
 ---
 
