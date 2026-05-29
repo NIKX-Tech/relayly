@@ -13,6 +13,7 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/NIKX-Tech/relayly?style=flat-square)](https://github.com/NIKX-Tech/relayly)
 [![Latest Release](https://img.shields.io/github/v/release/NIKX-Tech/relayly?style=flat-square)](https://github.com/NIKX-Tech/relayly/releases)
 [![Repo Size](https://img.shields.io/github/repo-size/NIKX-Tech/relayly?style=flat-square)](https://github.com/NIKX-Tech/relayly)
+[![GitHub Stars](https://img.shields.io/github/stars/NIKX-Tech/relayly?style=flat-square&color=yellow)](https://github.com/NIKX-Tech/relayly/stargazers)
 [![Dependabot](https://img.shields.io/badge/dependabot-enabled-025e8a?logo=dependabot&style=flat-square)](https://github.com/NIKX-Tech/relayly/blob/main/.github/dependabot.yml)
 <br>
 [![Sponsor GitHub](https://img.shields.io/badge/sponsor-GitHub-EA4AAA?style=flat-square&logo=github-sponsors)](https://github.com/sponsors/NIKX-Tech)
