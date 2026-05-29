@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - 2026-05-20
+## [0.3.0] - 2026-05-29
 
 ### Added
 - REST API on the relay port under `/api/v1/`:
@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Go clipboard-sync example (`examples/go/clipboard-sync/`)
 - TypeScript echo client example (`examples/ts/echo/`)
 - Rewritten `docs/PROTOCOL.md` matching current Noise XX + WebSocket behaviour
+- **Python SDK** (`sdk/py/`) — `pip install relayly`; async-first, full feature parity with the Go SDK (connect, pair, send/receive, `load_or_generate_key`)
+- **Go SDK**: automatic reconnection with exponential backoff; new `Options` fields `ReconnectDelay`, `MaxReconnectDelay`, `OnDisconnect`, `OnReconnect`
 
 ### Changed
 - WebSocket upgrade handler wired through rate limiter before reaching the relay hub

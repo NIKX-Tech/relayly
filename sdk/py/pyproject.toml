@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "relayly"
+version = "0.3.0"
+description = "Python SDK for Relayly — self-hosted end-to-end encrypted WebSocket relay"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "NIKX Tech", email = "erfan@nikx.one" }]
+keywords = ["relay", "websocket", "encryption", "local-first", "p2p", "e2ee"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Communications",
+  "Topic :: Security :: Cryptography",
+  "Typing :: Typed",
+  "Framework :: AsyncIO",
+]
+dependencies = ["websockets>=12.0", "PyNaCl>=1.5.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[project.urls]
+Homepage = "https://github.com/NIKX-Tech/relayly"
+Repository = "https://github.com/NIKX-Tech/relayly"
+"Bug Tracker" = "https://github.com/NIKX-Tech/relayly/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["relayly*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
