@@ -18,10 +18,10 @@
 <br>
 [![Sponsor GitHub](https://img.shields.io/badge/sponsor-GitHub-EA4AAA?style=flat-square&logo=github-sponsors)](https://github.com/sponsors/NIKX-Tech)
 [![Sponsor Open Collective](https://img.shields.io/badge/sponsor-Open%20Collective-00A0E0?style=flat-square&logo=opencollective)](https://opencollective.com/nikx-technologies/projects/relayly)
-[![SDK: Go](https://img.shields.io/badge/SDK-Go-00ADD8?style=flat-square&logo=go&logoColor=white)](https://pkg.go.dev/github.com/NIKX-Tech/relayly/sdk/go)
-[![SDK: TypeScript](https://img.shields.io/badge/SDK-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.npmjs.com/package/relayly)
-[![SDK: Python](https://img.shields.io/badge/SDK-Python-3776AB?style=flat-square&logo=python&logoColor=white)](https://pypi.org/project/relayly/)
-[![SDK: Rust](https://img.shields.io/badge/SDK-Rust-CE422B?style=flat-square&logo=rust&logoColor=white)](https://crates.io/crates/relayly)
+[![Go Reference](https://pkg.go.dev/badge/github.com/NIKX-Tech/relayly/sdk/go.svg)](https://pkg.go.dev/github.com/NIKX-Tech/relayly/sdk/go)
+[![npm](https://img.shields.io/npm/v/relayly?style=flat-square&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/relayly)
+[![PyPI](https://img.shields.io/pypi/v/relayly?style=flat-square&logo=python&logoColor=white&label=pypi)](https://pypi.org/project/relayly/)
+[![Crates.io](https://img.shields.io/crates/v/relayly?style=flat-square&logo=rust&logoColor=white&label=crates.io)](https://crates.io/crates/relayly)
 <br>
 [![Website](https://img.shields.io/badge/website-relayly.app-4F46E5?style=flat-square&logo=google-chrome&logoColor=white)](https://relayly.app)
 [![Discord](https://img.shields.io/badge/discord-join%20chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/cTFMfk6V7)
