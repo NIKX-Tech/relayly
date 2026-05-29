@@ -1,0 +1,8 @@
+# Force GitHub Linguist to count all SDK languages
+sdk/py/**/*.py linguist-detectable=true
+sdk/rust/**/*.rs linguist-detectable=true
+
+# Don't count generated/vendored files
+sdk/ts/dist/** linguist-generated=true
+sdk/py/**/*.egg-info/** linguist-generated=true
+sdk/rust/target/** linguist-vendored=true

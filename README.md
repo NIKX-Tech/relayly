@@ -123,8 +123,11 @@ Check out the `examples/` directory for ready-to-run implementations:
 | Example | Language | Description |
 |---|---|---|
 | [**Chat Demo**](examples/go/chat) | Go | **(Recommended)** Live E2EE chat between two terminals |
-| [Basic Echo](examples/go/basic) | Go | Simplest possible connection and message loop |
-| [Pair & Send](examples/go/pair-and-send) | Go | CLI-based pairing and single message exchange |
+| [Clipboard Sync](examples/go/clipboard-sync) | Go | Sync clipboard across devices automatically |
+| [Basic Echo](examples/go/basic) | Go | Simplest possible connect and message loop |
+| [Pair & Send](examples/go/pair-and-send) | Go | CLI pairing and one-shot message exchange |
+| [Node.js Send](examples/ts/node) | TypeScript | Connect, pair, and send from Node.js |
+| [Echo Server](examples/ts/echo) | TypeScript | Minimal echo client in TypeScript |
 
 ### 2. Server Setup (Local)
 
