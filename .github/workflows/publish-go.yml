@@ -1,0 +1,33 @@
+name: Go SDK Publish
+
+on:
+  push:
+    tags:
+      - 'sdk/go/v*'
+
+jobs:
+  test-and-publish:
+    name: Test & Register with pkg.go.dev
+    runs-on: ubuntu-latest
+    environment: pkg-go-dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          check-latest: true
+
+      - name: Run tests
+        working-directory: sdk/go
+        run: go test ./...
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#sdk/go/}" >> "$GITHUB_OUTPUT"
+
+      - name: Register with Go proxy
+        run: GOPROXY=https://proxy.golang.org go list -m github.com/NIKX-Tech/relayly/sdk/go@${{ steps.version.outputs.VERSION }}
