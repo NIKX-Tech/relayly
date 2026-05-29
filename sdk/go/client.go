@@ -361,9 +361,11 @@ func (c *Client) readLoop() {
 			case <-c.done:
 				return // normal shutdown
 			default:
-				// TODO: reconnect logic could go here
+			}
+			if !c.reconnectWithBackoff(err) {
 				return
 			}
+			continue
 		}
 
 		var frame wireMessage
@@ -372,6 +374,50 @@ func (c *Client) readLoop() {
 		}
 
 		c.dispatch(frame)
+	}
+}
+
+// reconnectWithBackoff fires OnDisconnect, then retries dialing with exponential backoff.
+// Returns true when a connection is re-established, false if shutdown was requested or
+// reconnection is disabled (ReconnectDelay < 0).
+func (c *Client) reconnectWithBackoff(cause error) bool {
+	if c.opts.OnDisconnect != nil {
+		c.opts.OnDisconnect(cause)
+	}
+
+	delay := c.opts.ReconnectDelay
+	if delay < 0 {
+		return false // reconnection disabled by caller
+	}
+	if delay == 0 {
+		delay = DefaultReconnectDelay
+	}
+	maxDelay := c.opts.MaxReconnectDelay
+	if maxDelay == 0 {
+		maxDelay = DefaultMaxReconnectDelay
+	}
+
+	for {
+		select {
+		case <-c.done:
+			return false
+		case <-time.After(delay):
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := c.dial(ctx)
+		cancel()
+		if err == nil {
+			if c.opts.OnReconnect != nil {
+				c.opts.OnReconnect()
+			}
+			return true
+		}
+
+		delay *= 2
+		if delay > maxDelay {
+			delay = maxDelay
+		}
 	}
 }
 

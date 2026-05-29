@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-29
+
+### Added
+- REST API on the relay port under `/api/v1/`:
+  - `POST /api/v1/pair` — register a new device and receive `device_id` + `pair_token`
+  - `GET /api/v1/devices` — list all registered devices
+  - `GET /api/v1/health` — server status, version, uptime, connected device count
+- CORS middleware on all API endpoints (supports browser and mobile clients)
+- Per-IP token-bucket rate limiter on WebSocket upgrades (10 req/min, HTTP 429 on excess)
+- Pairing code TTL — `expires_at` column on `devices` table (schema migration v2), pair codes expire after 5 minutes
+- API handler test suite (`internal/api/handler_test.go`) covering pair, list devices, health, CORS preflight
+- Go clipboard-sync example (`examples/go/clipboard-sync/`)
+- TypeScript echo client example (`examples/ts/echo/`)
+- Rewritten `docs/PROTOCOL.md` matching current Noise XX + WebSocket behaviour
+- **Python SDK** (`sdk/py/`) — `pip install relayly`; async-first, full feature parity with the Go SDK (connect, pair, send/receive, `load_or_generate_key`)
+- **Rust SDK** (`sdk/rust/`) — `relayly = "0.3"` on crates.io; Tokio async, NaCl box via `crypto_box`, same reconnect logic and API shape as other SDKs
+- **Go SDK**: automatic reconnection with exponential backoff; new `Options` fields `ReconnectDelay`, `MaxReconnectDelay`, `OnDisconnect`, `OnReconnect`
+- READMEs added for all three SDKs; npm package renamed from `relayly-client` to `relayly`
+
+### Changed
+- WebSocket upgrade handler wired through rate limiter before reaching the relay hub
+
 ## [0.2.0](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.1.0...relayly-v0.2.0) (2026-05-09)
 
 

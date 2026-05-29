@@ -26,18 +26,25 @@ func GeneratePairToken() (string, error) {
 	return base58Encode(b), nil
 }
 
+// pairingCodeTTL is the time-to-live for a newly generated pairing code.
+const pairingCodeTTL = 5 * time.Minute
+
 // NewDevice creates a Device struct with a fresh UUID and pair token.
+// The pairing token expires after pairingCodeTTL (5 minutes).
 // It does NOT persist it — call db.CreateDevice() for that.
 func NewDevice(name string) (*database.Device, error) {
 	token, err := GeneratePairToken()
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now().UTC()
+	expiresAt := now.Add(pairingCodeTTL)
 	return &database.Device{
 		ID:        uuid.NewString(),
 		Name:      name,
 		PairToken: token,
-		CreatedAt: time.Now().UTC(),
+		CreatedAt: now,
+		ExpiresAt: &expiresAt,
 	}, nil
 }
 

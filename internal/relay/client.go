@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	flnoise "github.com/flynn/noise"
 	"github.com/NIKX-Tech/relayly/internal/database"
 	"github.com/NIKX-Tech/relayly/internal/noise"
 	"go.uber.org/zap"
@@ -35,6 +36,12 @@ type Client struct {
 	maxMessageBytes int64
 	pingInterval    time.Duration
 	deadline        time.Duration
+
+	// Cipher states derived from the Noise XX handshake.
+	// decCS = client -> server (decrypts)
+	// encCS = server -> client (encrypts)
+	decCS *flnoise.CipherState
+	encCS *flnoise.CipherState
 }
 
 // NewClient constructs a Client. Call Pump() to start I/O goroutines.
@@ -117,7 +124,8 @@ func (c *Client) handshake() error {
 	if err != nil {
 		return err
 	}
-	if _, _, _, err := hs.ReadMessage(nil, msg3); err != nil {
+	_, cs1, cs2, err := hs.ReadMessage(nil, msg3)
+	if err != nil {
 		return fmt.Errorf("reading client handshake msg3: %w", err)
 	}
 
@@ -136,6 +144,11 @@ func (c *Client) handshake() error {
 			return fmt.Errorf("public key mismatch: expected %s, got %s", device.PublicKey, pubHex)
 		}
 	}
+
+	// Store cipher states for transport
+	// Noise XX responder: cs1 = initiator->responder, cs2 = responder->initiator
+	c.decCS = cs1
+	c.encCS = cs2
 
 	return nil
 }
@@ -166,7 +179,14 @@ func (c *Client) readPump() {
 			continue
 		}
 
-		c.hub.Route(Message{From: c.DeviceID, Payload: payload}, c.PairedDeviceID)
+		// Decrypt the payload using the client-to-server cipher state.
+		plaintext, err := c.decCS.Decrypt(nil, nil, payload)
+		if err != nil {
+			c.log.Warn("decryption failed", zap.Error(err))
+			continue
+		}
+
+		c.hub.Route(Message{From: c.DeviceID, Payload: plaintext}, c.PairedDeviceID)
 	}
 }
 
@@ -183,7 +203,15 @@ func (c *Client) writePump() {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			if err := c.conn.WriteMessage(websocket.BinaryMessage, payload); err != nil {
+
+			// Encrypt the payload using the server-to-client cipher state.
+			ciphertext, err := c.encCS.Encrypt(nil, nil, payload)
+			if err != nil {
+				c.log.Error("encryption failed", zap.Error(err))
+				continue
+			}
+
+			if err := c.conn.WriteMessage(websocket.BinaryMessage, ciphertext); err != nil {
 				c.log.Warn("write error", zap.Error(err))
 				return
 			}

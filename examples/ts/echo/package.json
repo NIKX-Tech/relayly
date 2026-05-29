@@ -1,0 +1,19 @@
+{
+  "name": "relayly-echo-example",
+  "version": "0.1.0",
+  "description": "Echo server example for Relayly — pairs with a device and echoes every message back.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts",
+    "start:code": "tsx index.ts --code"
+  },
+  "dependencies": {
+    "relayly-client": "file:../../../sdk/ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.4.0"
+  }
+}

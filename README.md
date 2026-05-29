@@ -18,9 +18,10 @@
 <br>
 [![Sponsor GitHub](https://img.shields.io/badge/sponsor-GitHub-EA4AAA?style=flat-square&logo=github-sponsors)](https://github.com/sponsors/NIKX-Tech)
 [![Sponsor Open Collective](https://img.shields.io/badge/sponsor-Open%20Collective-00A0E0?style=flat-square&logo=opencollective)](https://opencollective.com/nikx-technologies/projects/relayly)
-[![Go Reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/NIKX-Tech/relayly)
-[![SDK: Go](https://img.shields.io/badge/SDK-Go-00ADD8?style=flat-square&logo=go&logoColor=white)](https://github.com/NIKX-Tech/relayly/tree/main/sdk/go)
-[![SDK: TypeScript](https://img.shields.io/badge/SDK-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://github.com/NIKX-Tech/relayly/tree/main/sdk/ts)
+[![Go Reference](https://pkg.go.dev/badge/github.com/NIKX-Tech/relayly/sdk/go.svg)](https://pkg.go.dev/github.com/NIKX-Tech/relayly/sdk/go)
+[![npm](https://img.shields.io/npm/v/relayly?style=flat-square&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/relayly)
+[![PyPI](https://img.shields.io/pypi/v/relayly?style=flat-square&logo=python&logoColor=white&label=pypi)](https://pypi.org/project/relayly/)
+[![Crates.io](https://img.shields.io/crates/v/relayly?style=flat-square&logo=rust&logoColor=white&label=crates.io)](https://crates.io/crates/relayly)
 <br>
 [![Website](https://img.shields.io/badge/website-relayly.app-4F46E5?style=flat-square&logo=google-chrome&logoColor=white)](https://relayly.app)
 [![Discord](https://img.shields.io/badge/discord-join%20chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/cTFMfk6V7)
@@ -49,11 +50,11 @@ Relayly enables trustless message routing between your own devices (phone, lapto
 
 | Feature | Detail |
 |---|---|
-| 🔐 **End-to-End Encryption** | Noise Protocol XX (X25519, ChaChaPoly) — server never sees plaintext |
-| 📱 **Device Pairing** | 6-digit short code or QR code — no accounts required |
+| 🔐 **End-to-End Encryption** | Noise Protocol XX (X25519, ChaChaPoly), server never sees plaintext |
+| 📱 **Device Pairing** | 6-digit short code or QR code, no accounts required |
 | ⚡ **Real-time Forwarding** | Low-latency WebSocket relaying with minimal server overhead |
 | ♻️ **Auto-reconnect** | Exponential-backoff reconnection built into SDKs |
-| 🗄️ **Zero-Config Storage** | Embedded SQLite storage — no external database required |
+| 🗄️ **Zero-Config Storage** | Embedded SQLite storage, no external database required |
 | 🐳 **Infrastructure Ready** | Pre-built Docker images and single portable binary |
 | 🖥️ **Interactive Admin** | HTMX-powered dashboard for device and pairing management |
 | 🔑 **Trustless Architecture** | Public Key Locking prevents server-side impersonation |
@@ -108,7 +109,25 @@ docker compose up --build -d
 
 # Register your first device
 docker exec relayly /relayly pair "My Device"
+
+# Want to test it? Try the Chat Demo:
+# cd examples/go/chat && ./setup.sh
 ```
+
+---
+
+## 🎮 Interactive Examples
+
+Check out the `examples/` directory for ready-to-run implementations:
+
+| Example | Language | Description |
+|---|---|---|
+| [**Chat Demo**](examples/go/chat) | Go | **(Recommended)** Live E2EE chat between two terminals |
+| [Clipboard Sync](examples/go/clipboard-sync) | Go | Sync clipboard across devices automatically |
+| [Basic Echo](examples/go/basic) | Go | Simplest possible connect and message loop |
+| [Pair & Send](examples/go/pair-and-send) | Go | CLI pairing and one-shot message exchange |
+| [Node.js Send](examples/ts/node) | TypeScript | Connect, pair, and send from Node.js |
+| [Echo Server](examples/ts/echo) | TypeScript | Minimal echo client in TypeScript |
 
 ### 2. Server Setup (Local)
 
@@ -127,52 +146,114 @@ go build -o relayly ./cmd/relayly
 
 ## 📦 Official Client SDKs
 
-We provide official, highly-optimized SDKs for Go and TypeScript in the `sdk/` directory.
+Official SDKs for Go, TypeScript, and Python are in the `sdk/` directory and published to their respective package registries.
 
-### Go SDK (`sdk/go`)
+### Go SDK
+
+```bash
+go get github.com/NIKX-Tech/relayly/sdk/go
+```
 
 ```go
 import relayly "github.com/NIKX-Tech/relayly/sdk/go"
 
-// Load or generate a persistent key
 key, _ := relayly.LoadOrGenerateKey("~/.relayly/device.key")
 
-// Connect to the relay server
-client, _ := relayly.Connect(ctx, "ws://your-server:8080/ws", relayly.Options{
-    DeviceID:   "your-device-id",
+client, _ := relayly.Connect(ctx, "wss://your-server/ws", relayly.Options{
+    DeviceID:   "my-laptop",
     PrivateKey: key,
 })
 defer client.Close()
 
-// Get a pairing code to share
 code, _ := client.RequestPairCode(ctx)
 fmt.Println("Code:", code.Short)
 
-// Or accept a code from another device
 peer, _ := client.AcceptPair(ctx, "483921")
-
-// Send/Receive
-client.Send(ctx, peer.ID, []byte("Hello!"))
+client.Send(ctx, peer.ID, []byte("hello!"))
 msg := <-client.Messages()
 ```
 
-### TypeScript SDK (`sdk/ts`)
+[pkg.go.dev/github.com/NIKX-Tech/relayly/sdk/go](https://pkg.go.dev/github.com/NIKX-Tech/relayly/sdk/go)
+
+### TypeScript / JavaScript SDK
+
+```bash
+npm install relayly
+```
 
 ```typescript
-import { RelaylyClient } from 'relayly-client';
+import { RelaylyClient, generateKey } from 'relayly';
 
-const client = new RelaylyClient({
-  url: 'ws://your-server:8080/ws',
-  deviceId: 'your-device-id',
-  privateKey: yourNoisePrivateKey,
+const client = new RelaylyClient('wss://your-server', {
+  deviceId: 'my-laptop',
+  keyPair: generateKey(),
 });
 
 await client.connect();
-
-// Events
 client.on('message', (msg) => console.log(msg.payload));
-client.on('paired', (peer) => console.log('New peer:', peer.id));
 ```
+
+[npmjs.com/package/relayly](https://www.npmjs.com/package/relayly) - works in Node.js, browsers, and React Native.
+
+### Python SDK
+
+```bash
+pip install relayly
+```
+
+```python
+import asyncio, relayly
+
+async def main():
+    key = relayly.load_or_generate_key("~/.relayly/device.key")
+    client = await relayly.connect("wss://your-server", relayly.Options(
+        device_id="my-laptop",
+        private_key=key,
+    ))
+    async for msg in client.messages():
+        print(msg.payload.decode())
+
+asyncio.run(main())
+```
+
+[pypi.org/project/relayly](https://pypi.org/project/relayly/)
+
+### Rust SDK
+
+```toml
+[dependencies]
+relayly = "0.3"
+tokio = { version = "1", features = ["full"] }
+```
+
+```rust
+use relayly::{connect, load_or_generate_key, Options};
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let key = load_or_generate_key(Path::new("~/.relayly/device.key"))?;
+    let (client, mut messages) = connect("wss://your-server", Options {
+        device_id: "my-laptop".into(),
+        private_key: key,
+        ..Default::default()
+    }).await?;
+
+    tokio::spawn(async move {
+        while let Some(msg) = messages.recv().await {
+            println!("[{}] {}", msg.from, String::from_utf8_lossy(&msg.payload));
+        }
+    });
+
+    let code = client.request_pair_code().await?;
+    println!("Share this code: {}", code.short);
+    let peer = code.wait().await?;
+    client.send(&peer.id, b"hello!").await?;
+    Ok(())
+}
+```
+
+[crates.io/crates/relayly](https://crates.io/crates/relayly)
 
 ---
 
@@ -232,7 +313,7 @@ Clients connect to:
 2. **Server → Client**: [msg2: encrypted server static + ephemeral]
 3. **Client → Server**: [msg3: encrypted client static]
 
-After handshake, all subsequent frames are **opaque encrypted binary** — the relay never inspects them.
+After handshake, all subsequent frames are **opaque encrypted binary**, the relay never inspects them.
 
 ---
 

@@ -5,12 +5,22 @@
 {{define "content"}}
 <div class="max-w-5xl mx-auto px-6 py-10">
 
-  <div class="flex items-center justify-between mb-6">
-    <h1 class="text-2xl font-bold text-white">Devices</h1>
-    <span class="text-sm text-gray-500">{{len .Devices}} registered</span>
+  <div class="flex items-start justify-between mb-8">
+    <div>
+      <h1 class="text-2xl font-bold text-white">Devices</h1>
+      <p class="text-sm text-gray-500 mt-1">Manage registered devices and pairings</p>
+    </div>
+    <span class="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-500 bg-gray-700 px-2.5 py-1 rounded-full">
+      <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+        <line x1="8" y1="21" x2="16" y2="21"/>
+        <line x1="12" y1="17" x2="12" y2="21"/>
+      </svg>
+      {{len .Devices}} registered
+    </span>
   </div>
 
-  <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+  <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
     <div
       id="devices-table"
       hx-get="/htmx/devices"
