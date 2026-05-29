@@ -1,6 +1,6 @@
 # relayly/sdk/go
 
-Go client SDK for [Relayly](https://github.com/NIKX-Tech/relayly) — a self-hosted, end-to-end encrypted WebSocket relay for local-first apps.
+Go client SDK for [Relayly](https://github.com/NIKX-Tech/relayly) - a self-hosted, end-to-end encrypted WebSocket relay for local-first apps.
 
 ## Install
 
@@ -59,14 +59,14 @@ func main() {
 ## Pairing
 
 ```go
-// Device A — request a code
+// Device A - request a code
 code, err := client.RequestPairCode(ctx)
 fmt.Println("Code:", code.Short)
 fmt.Println("QR URL:", code.QRCodeURL("wss://relay.example.com"))
 
 peer, err := code.Wait(ctx) // blocks until the other device pairs
 
-// Device B — accept the code
+// Device B - accept the code
 peer, err := client.AcceptPair(ctx, "483921")
 ```
 

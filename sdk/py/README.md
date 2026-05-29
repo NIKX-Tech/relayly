@@ -1,6 +1,6 @@
 # relayly
 
-Python SDK for [Relayly](https://github.com/NIKX-Tech/relayly) — a self-hosted, end-to-end encrypted WebSocket relay for local-first apps.
+Python SDK for [Relayly](https://github.com/NIKX-Tech/relayly) - a self-hosted, end-to-end encrypted WebSocket relay for local-first apps.
 
 Async-first (asyncio), with full feature parity with the Go and TypeScript SDKs.
 
@@ -33,7 +33,7 @@ asyncio.run(main())
 ## Pairing
 
 ```python
-# Device A — request a code
+# Device A - request a code
 code = await client.request_pair_code()
 print("Share this code:", code.short)
 print("QR URL:", code.qr_code_url("wss://relay.example.com"))
@@ -41,7 +41,7 @@ print("QR URL:", code.qr_code_url("wss://relay.example.com"))
 peer = await code.wait()  # blocks until the other device pairs
 print("Paired with", peer.id)
 
-# Device B — accept the code
+# Device B - accept the code
 peer = await client.accept_pair("483921")
 ```
 
@@ -87,8 +87,8 @@ key = relayly.load_or_generate_key("~/.relayly/device.key")
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `device_id` | `str` | — | Unique ID for this device. Required. |
-| `private_key` | `PrivateKey` | — | X25519 private key. Required. |
+| `device_id` | `str` | - | Unique ID for this device. Required. |
+| `private_key` | `PrivateKey` | - | X25519 private key. Required. |
 | `ping_interval` | `float` | `30.0` | Keepalive ping interval (seconds). |
 | `reconnect_delay` | `float` | `1.0` | Initial reconnect delay. Set to `-1` to disable. |
 | `max_reconnect_delay` | `float` | `60.0` | Backoff ceiling (seconds). |

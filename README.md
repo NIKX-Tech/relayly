@@ -19,8 +19,9 @@
 [![Sponsor GitHub](https://img.shields.io/badge/sponsor-GitHub-EA4AAA?style=flat-square&logo=github-sponsors)](https://github.com/sponsors/NIKX-Tech)
 [![Sponsor Open Collective](https://img.shields.io/badge/sponsor-Open%20Collective-00A0E0?style=flat-square&logo=opencollective)](https://opencollective.com/nikx-technologies/projects/relayly)
 [![Go Reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/NIKX-Tech/relayly)
-[![SDK: Go](https://img.shields.io/badge/SDK-Go-00ADD8?style=flat-square&logo=go&logoColor=white)](https://github.com/NIKX-Tech/relayly/tree/main/sdk/go)
-[![SDK: TypeScript](https://img.shields.io/badge/SDK-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://github.com/NIKX-Tech/relayly/tree/main/sdk/ts)
+[![SDK: Go](https://img.shields.io/badge/SDK-Go-00ADD8?style=flat-square&logo=go&logoColor=white)](https://pkg.go.dev/github.com/NIKX-Tech/relayly/sdk/go)
+[![SDK: TypeScript](https://img.shields.io/badge/SDK-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.npmjs.com/package/relayly)
+[![SDK: Python](https://img.shields.io/badge/SDK-Python-3776AB?style=flat-square&logo=python&logoColor=white)](https://pypi.org/project/relayly/)
 <br>
 [![Website](https://img.shields.io/badge/website-relayly.app-4F46E5?style=flat-square&logo=google-chrome&logoColor=white)](https://relayly.app)
 [![Discord](https://img.shields.io/badge/discord-join%20chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/cTFMfk6V7)
@@ -142,52 +143,77 @@ go build -o relayly ./cmd/relayly
 
 ## 📦 Official Client SDKs
 
-We provide official, highly-optimized SDKs for Go and TypeScript in the `sdk/` directory.
+Official SDKs for Go, TypeScript, and Python are in the `sdk/` directory and published to their respective package registries.
 
-### Go SDK (`sdk/go`)
+### Go SDK
+
+```bash
+go get github.com/NIKX-Tech/relayly/sdk/go
+```
 
 ```go
 import relayly "github.com/NIKX-Tech/relayly/sdk/go"
 
-// Load or generate a persistent key
 key, _ := relayly.LoadOrGenerateKey("~/.relayly/device.key")
 
-// Connect to the relay server
-client, _ := relayly.Connect(ctx, "ws://your-server:8080/ws", relayly.Options{
-    DeviceID:   "your-device-id",
+client, _ := relayly.Connect(ctx, "wss://your-server/ws", relayly.Options{
+    DeviceID:   "my-laptop",
     PrivateKey: key,
 })
 defer client.Close()
 
-// Get a pairing code to share
 code, _ := client.RequestPairCode(ctx)
 fmt.Println("Code:", code.Short)
 
-// Or accept a code from another device
 peer, _ := client.AcceptPair(ctx, "483921")
-
-// Send/Receive
-client.Send(ctx, peer.ID, []byte("Hello!"))
+client.Send(ctx, peer.ID, []byte("hello!"))
 msg := <-client.Messages()
 ```
 
-### TypeScript SDK (`sdk/ts`)
+[pkg.go.dev/github.com/NIKX-Tech/relayly/sdk/go](https://pkg.go.dev/github.com/NIKX-Tech/relayly/sdk/go)
+
+### TypeScript / JavaScript SDK
+
+```bash
+npm install relayly
+```
 
 ```typescript
-import { RelaylyClient } from 'relayly-client';
+import { RelaylyClient, generateKey } from 'relayly';
 
-const client = new RelaylyClient({
-  url: 'ws://your-server:8080/ws',
-  deviceId: 'your-device-id',
-  privateKey: yourNoisePrivateKey,
+const client = new RelaylyClient('wss://your-server', {
+  deviceId: 'my-laptop',
+  keyPair: generateKey(),
 });
 
 await client.connect();
-
-// Events
 client.on('message', (msg) => console.log(msg.payload));
-client.on('paired', (peer) => console.log('New peer:', peer.id));
 ```
+
+[npmjs.com/package/relayly](https://www.npmjs.com/package/relayly) - works in Node.js, browsers, and React Native.
+
+### Python SDK
+
+```bash
+pip install relayly
+```
+
+```python
+import asyncio, relayly
+
+async def main():
+    key = relayly.load_or_generate_key("~/.relayly/device.key")
+    client = await relayly.connect("wss://your-server", relayly.Options(
+        device_id="my-laptop",
+        private_key=key,
+    ))
+    async for msg in client.messages():
+        print(msg.payload.decode())
+
+asyncio.run(main())
+```
+
+[pypi.org/project/relayly](https://pypi.org/project/relayly/)
 
 ---
 
