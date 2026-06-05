@@ -12,7 +12,7 @@ jobs:
     environment: crates-io
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install stable Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
