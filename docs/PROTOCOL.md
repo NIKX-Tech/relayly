@@ -1,220 +1,172 @@
-# Relayly Wire Protocol
+# Relayly Wire Protocol — v1 (normative)
 
-This document describes the actual protocol used between Relayly clients and the Relayly relay server, based on the server implementation.
+This document is the **contract**. Server and every SDK are implemented and tested against
+this spec, not against each other's source code. Any behavior not specified here is
+undefined; implementations MUST NOT rely on it. Changes require an RFC.
 
----
-
-## Transport
-
-All connections are made over **WebSocket** (`ws://` or `wss://`). The server is payload-agnostic: after authentication and the Noise handshake it forwards encrypted binary frames verbatim between paired devices without inspecting content.
+Keywords MUST / SHOULD / MAY per RFC 2119. Protocol version: `1`.
 
 ---
 
-## WebSocket Connection URL
+## 1. Roles and layers
 
 ```
-ws://host:port/ws?device_id=<uuid>&token=<pair-token>
+Device A  ── E2E: Noise XX (binary frames, opaque) ──  Device B
+    \                                                   /
+     \── control: JSON over TLS ── Relay ── JSON ──────/
 ```
 
-| Parameter   | Description                                        |
-|-------------|----------------------------------------------------|
-| `device_id` | UUID of the device (obtained from `POST /api/v1/pair`) |
-| `token`     | Pairing token returned by `POST /api/v1/pair`      |
+- **Relay server**: authenticates devices, mediates pairing, forwards binary frames
+  verbatim between paired devices. It MUST NOT hold any key material capable of
+  decrypting relayed frames.
+- **Devices**: hold static X25519 keypairs; run Noise XX with each other through the relay.
 
-Both parameters are **required**. Missing either returns `400 Bad Request`.
+## 2. Device registration (out-of-band, REST/CLI)
 
----
+`POST /api/v1/devices` with `{"name": "<display name>"}` returns:
 
-## Authentication (HTTP layer — before WebSocket upgrade)
-
-Authentication happens at the HTTP level via query parameters, **before** the WebSocket upgrade is performed.
-
-### Success
-
-The server validates:
-
-1. `device_id` and `token` are both present.
-2. A device with the given `device_id` exists in the database.
-3. The stored `pair_token` matches the supplied `token`.
-4. The pairing code has not expired (`expires_at` is null or in the future).
-
-On success the connection is upgraded to WebSocket.
-
-### Failure responses
-
-| HTTP Status | Body                    | Condition                        |
-|-------------|-------------------------|----------------------------------|
-| `400`       | `missing device_id or token` | Either query param absent   |
-| `401`       | `unauthorized`          | Device not found or token mismatch |
-| `401`       | `pairing code expired`  | `expires_at` is set and in the past |
-| `429`       | `rate limit exceeded`   | More than 10 upgrade attempts per minute from the same IP |
-
----
-
-## Noise XX Handshake (post-upgrade)
-
-Once the WebSocket is open the server performs a **Noise Protocol XX** handshake as the **responder**. The client is the **initiator**. All three handshake messages are exchanged as WebSocket **binary** frames.
-
-```
-Client (initiator)          Server (responder)
-        |                         |
-        |--- msg1 (ephemeral) --->|   client sends ephemeral key
-        |<-- msg2 (ephemeral+static+payload) ---|   server sends ephemeral + static key
-        |--- msg3 (static+payload) -->|   client sends static key
-        |                         |
-        |   [transport phase]     |
-        |<--- encrypted frames -->|
-```
-
-- **Algorithm suite**: Noise_XX_25519_ChaChaPoly_BLAKE2s (as configured by `github.com/flynn/noise`)
-- After the handshake completes, two cipher states are derived:
-  - **cs1** (initiator→responder): server uses this to decrypt frames from the client
-  - **cs2** (responder→initiator): server uses this to encrypt frames sent to the client
-- On the first successful handshake the server persists the client's static public key. Subsequent connections from the same device must present the same public key; a mismatch closes the connection. The server never resets this binding automatically.
-
-If the handshake fails the server calls `conn.Close()` — a raw TCP close with **no WebSocket close frame and no close code**. The client will observe an abnormal closure (e.g. code `1006` in browser WebSocket APIs).
-
-Handshake failure conditions:
-
-| Condition | Details |
-|-----------|---------|
-| Malformed Noise message | msg1 or msg3 fails Noise protocol parsing (bad MAC, wrong length, etc.) |
-| Deadline exceeded | No message received within the configured deadline (default 60 s, `websocket.deadline`) |
-| Public key mismatch | Device has a previously stored static public key and the current handshake presents a different one |
-
----
-
-## Transport Frames (post-handshake)
-
-After the Noise handshake, all frames are **binary WebSocket messages** containing Noise-encrypted ciphertext.
-
-- **Client → Server**: client encrypts with cs1 (its send cipher state); server decrypts with cs1.
-- **Server → Client**: server encrypts with cs2; client decrypts with cs2.
-
-The relay never inspects the decrypted plaintext. It decrypts only to verify the Noise MAC and then re-encrypts for the peer using the peer's cs2.
-
-### Message routing
-
-When the server receives a frame from device A it decrypts it, then looks up A's paired device (stored in the `paired_with` DB column) and re-encrypts the plaintext for that peer using the peer's cs2.
-
-Frames are **silently dropped** in two cases — the server sends no acknowledgement or error in either:
-
-| Case | Condition |
-|------|-----------|
-| Device not paired | A's `paired_with` column is NULL (no pairing has been established yet) |
-| Peer offline | A is paired but the peer device is not currently connected |
-
-The client is responsible for detecting lost messages and retrying.
-
----
-
-## Keepalive (WebSocket layer)
-
-The server sends a WebSocket **ping** frame every 30 seconds (configurable via `websocket.ping_interval`). The client must respond with a **pong**. If no pong is received within the deadline (default 60 s), the connection is closed.
-
----
-
-## Pairing Code Expiry
-
-Pairing tokens are generated with a **5-minute TTL**. The `expires_at` timestamp is stored in the database. After expiry, a connection attempt with that token returns `401 pairing code expired`. There is no automatic renewal; a new device + token must be generated.
-
----
-
-## REST API Endpoints
-
-All `/api/*` responses include CORS headers:
-
-```
-Access-Control-Allow-Origin: *
-Access-Control-Allow-Methods: GET, POST, OPTIONS
-Access-Control-Allow-Headers: Content-Type
-```
-
-Preflight `OPTIONS` requests return `204 No Content`.
-
-### GET /api/v1/health
-
-Returns server health and uptime.
-
-**Response `200 OK`:**
 ```json
-{
-  "status": "ok",
-  "version": "1.2.3",
-  "uptime_seconds": 3600,
-  "connected_devices": 4
-}
+{ "device_id": "<uuid>", "device_token": "<opaque>", "created_at": "..." }
 ```
 
-### GET /api/v1/devices
+The CLI `relayly pair <name>` wraps this endpoint (QR output unchanged).
+`device_token` is a bearer credential for connecting; it is NOT related to E2E keys.
 
-Returns a JSON array of all registered devices.
+> Migration note: this endpoint replaces `POST /api/v1/pair` and the field replaces
+> `pair_token`. The old endpoint MAY be kept as a deprecated alias during v0.4.x.
 
-**Response `200 OK`:**
-```json
-[
-  {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "My Phone",
-    "paired_with": "660e8400-e29b-41d4-a716-446655440001",
-    "created_at": "2025-01-15T10:00:00Z",
-    "last_seen": "2025-01-15T10:30:00Z"
-  }
-]
+## 3. Connecting
+
+```
+ws(s)://<host>:<port>/ws?device_id=<uuid>&token=<device_token>
 ```
 
-`paired_with` and `last_seen` may be `null`.
+Auth happens at the HTTP layer before upgrade. Failure responses (unchanged from v0):
+`400` missing params · `401` unknown device / bad token / expired · `429` rate limited
+(>10 attempts/min/IP).
 
-### POST /api/v1/pair
+On success the server upgrades and immediately sends a `welcome` control message (§5.1).
+There is NO in-band auth frame and NO client↔server cryptographic handshake.
 
-Registers a new device and returns a pairing token valid for 5 minutes.
+## 4. Frame discipline
 
-**Request body:**
-```json
-{ "name": "My Phone" }
-```
+| WebSocket frame type | Meaning | Who reads it |
+|---|---|---|
+| **Text** | JSON control message (§5) | client ↔ server |
+| **Binary** | E2E envelope (§6), relayed **verbatim** | device ↔ device only |
+| Ping/Pong | transport keepalive (server pings; clients that can, pong) | — |
 
-**Response `200 OK`:**
-```json
-{
-  "device_id": "550e8400-e29b-41d4-a716-446655440000",
-  "pair_token": "3vQB7Kx...",
-  "expires_at": "2025-01-15T10:05:00Z"
-}
-```
+The server MUST NOT parse, decrypt, modify, or reorder binary frames. One WebSocket
+binary frame carries exactly one envelope. Frames exceeding the server's
+`max_message_bytes` (config, default 4096) are rejected by closing the connection.
 
-Use `device_id` and `pair_token` as query parameters when opening the WebSocket connection. The token is a cryptographically random 32-byte value encoded in base58.
+## 5. Control channel (JSON text frames)
 
-### GET /health
+Every control message has `"type"`. Unknown types MUST be ignored (forward compat).
+Unknown fields MUST be ignored.
 
-The relay server's built-in health endpoint (no CORS, no `/api/` prefix):
+### 5.1 Server → client
 
-**Response `200 OK`:**
-```json
-{
-  "status": "ok",
-  "version": "1.2.3",
-  "uptime_seconds": 3600,
-  "connected_devices": 4
-}
-```
+- `welcome` — `{ "type":"welcome", "protocol_version":1, "device_id":"...",
+  "peers":[{"id":"...","static_key":"<b64 or empty>"}] }`
+  Sent once after upgrade. `peers` lists currently linked device(s); `static_key` is the
+  peer's announced key if known (§7). A client whose implemented version ≠
+  `protocol_version` MUST disconnect with an error to its caller.
+- `pair_code` — `{ "type":"pair_code", "code":"483921", "expires_in":300 }`
+- `pair_complete` — `{ "type":"pair_complete", "code":"483921", "peer_id":"...",
+  "peer_static_key":"<b64>" }` Sent to **both** devices when a code is accepted.
+- `peer_status` — `{ "type":"peer_status", "peer_id":"...", "online":true|false }`
+  Sent on welcome and whenever the paired peer connects/disconnects.
+- `pong` — `{ "type":"pong" }`
+- `error` — `{ "type":"error", "code":"<machine_code>", "message":"<human>" }`
+  Error codes (initial set): `invalid_code`, `code_expired`, `already_paired`,
+  `peer_offline`, `rate_limited`, `malformed`, `internal`.
 
----
+### 5.2 Client → server
 
-## Error Codes
+- `announce_key` — `{ "type":"announce_key", "static_key":"<b64 32-byte X25519 pub>" }`
+  MUST be the first client control message after `welcome`. See §7 (key locking).
+- `pair_request` — `{ "type":"pair_request" }` Ask for a fresh 6-digit code.
+- `pair_accept` — `{ "type":"pair_accept", "code":"483921" }`
+- `ping` — `{ "type":"ping" }` (for runtimes that cannot send WS pings, e.g. browsers).
 
-| HTTP Status | Condition |
-|-------------|-----------|
-| `400` | Missing required query parameters or malformed request body |
-| `401` | Invalid device ID, wrong token, or expired pairing code |
-| `429` | Rate limit exceeded (>10 WebSocket upgrade attempts per minute per IP) |
-| `500` | Internal server error (database or key generation failure) |
+### 5.3 Pairing flow
 
----
+1. A sends `pair_request` → server replies `pair_code` (code TTL: 300 s, single use).
+2. The code travels human-to-human / QR (out of band).
+3. B sends `pair_accept {code}`.
+4. Server links A↔B in the DB, sends `pair_complete` to both, including each side's
+   announced static key so the peer can cross-check the handshake (§7).
+5. The **accepting device (B) is the Noise initiator** and starts the handshake (§6).
 
-## Security Notes
+v1 supports exactly **one linked peer per device** (matches current DB schema). Multi-peer
+routing is roadmap v0.7.
 
-- The server never stores or has persistent access to message plaintext; it only holds Noise static public keys.
-- The Noise XX pattern provides **mutual authentication** and **forward secrecy**.
-- Pairing tokens are single-use-by-convention (the server does not invalidate them after first use, but clients should treat them as such).
-- TLS (`wss://`) is strongly recommended in production. Configure `tls.enabled`, `tls.cert`, and `tls.key` in `relayly.yaml`.
+## 6. E2E channel (binary frames)
+
+Envelope: `[1-byte type][payload]`.
+
+| Byte | Name | Payload |
+|---|---|---|
+| `0x01` | `HANDSHAKE` | one Noise XX handshake message |
+| `0x02` | `TRANSPORT` | one Noise transport ciphertext |
+
+- Suite: **`Noise_XX_25519_ChaChaPoly_BLAKE2s`**, empty prologue, no PSK, no payloads
+  inside handshake messages in v1.
+- Initiator: the accepting device on first pairing (§5.3). On any **reconnect** of either
+  side (signaled via `peer_status online:true`), the device with the **lexicographically
+  smaller `device_id`** (byte-wise comparison of the canonical lowercase UUID string) MUST
+  initiate a fresh handshake. The initiator role is decided fresh per handshake event by
+  these two rules; it is NOT a fixed property of a device for the life of the pairing.
+- Rekey is deliberately proactive, not only reactive to AEAD failure: v1 has no
+  store-and-forward, so a dropped connection can silently desync the per-direction nonce
+  counters, and re-handshaking on every reconnect closes that window immediately instead of
+  waiting for a garbled frame.
+- **Make-before-break:** a peer MUST accept a new `0x01` msg1 at any time, but MUST NOT
+  discard its current transport session until the replacement handshake completes and
+  authenticates successfully. A handshake attempt that times out or otherwise fails MUST be
+  abandoned, leaving the prior session (if still healthy) in place. The relay is untrusted
+  (§7); implementations SHOULD rate-limit unsolicited msg1s per peer so a malicious or
+  compromised relay cannot force perpetual handshake churn by injecting `0x01` frames it can
+  never complete.
+- One envelope = one Noise message. Noise's internal nonce counter is used as-is; frames
+  arrive in order (TCP/WS). A transport frame that fails AEAD MUST cause the receiver to
+  discard the session and (if it is the designated initiator) re-handshake.
+- Application payloads are the plaintext of `TRANSPORT` messages. The relay and this spec
+  impose no structure on them (karshipta, for example, puts protobuf Envelopes here).
+
+## 7. Key model and locking (two layers)
+
+1. **Client-side pinning (mandatory, the real security boundary):** every SDK MUST persist
+   the peer's static public key learned from the first completed XX handshake, keyed by
+   `peer_id`, and MUST hard-fail (no auto-retry, surfaced error) if a later handshake
+   presents a different key. Unpinning is an explicit user action only.
+2. **Server-side announced-key locking (defense in depth):** the server stores the first
+   `announce_key` per device and rejects (via `error` + close) any later announcement that
+   differs. `pair_complete` carries the announced keys; after the handshake each SDK
+   MUST verify `PeerStatic == peer_static_key` from `pair_complete` and hard-fail on
+   mismatch. This detects third-party MitM; it does not protect against a malicious
+   relay, layer 1 and the out-of-band code do.
+
+Trust bootstrapping is TOFU strengthened by the out-of-band 6-digit code. This is an
+accepted v1 tradeoff; code-bound handshakes (PSK) are a roadmap item.
+
+## 8. Keepalive, limits, ordering
+
+- Server sends WS pings every `ping_interval` (config); connections idle past `deadline`
+  are closed. Browser clients use JSON `ping`/`pong` instead.
+- Server MAY drop binary frames addressed to an offline peer (no store-and-forward in v1;
+  roadmap v0.8). SDKs MUST NOT assume delivery; peers learn liveness via `peer_status`.
+- Base64 in JSON fields is standard alphabet **with padding**.
+
+## 9. Versioning
+
+`welcome.protocol_version` is the negotiation mechanism (server-declared, take it or
+leave). Breaking wire changes bump it and require an RFC. SDKs expose the version they
+implement.
+
+## 10. Conformance
+
+An implementation conforms iff it passes the cross-language interop matrix in CI
+(`docs/tasks/02-sdks-and-interop.md`): pair with a peer running a *different* implementation
+through a real server build and round-trip plaintext both directions.
