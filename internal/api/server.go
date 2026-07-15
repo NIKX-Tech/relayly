@@ -27,7 +27,10 @@ func New(db *database.DB, hub *relay.Hub, log *zap.Logger, ver string) http.Hand
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/devices", s.handleListDevices)
-	mux.HandleFunc("POST /api/v1/pair", s.handlePair)
+	mux.HandleFunc("POST /api/v1/devices", s.handleCreateDevice)
+	// Deprecated alias (docs/PROTOCOL.md §2): same handler, same new device_token
+	// field, kept only so bookmarked/scripted callers of the old path don't break.
+	mux.HandleFunc("POST /api/v1/pair", deprecated(s.handleCreateDevice))
 	mux.HandleFunc("GET /api/v1/health", s.handleHealth)
 
 	// Wrap every route with CORS middleware.

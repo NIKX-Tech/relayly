@@ -1,5 +1,12 @@
 # Chat Demo
 
+> **Broken as of Protocol v1:** this example hand-rolls the old client<->server Noise
+> handshake directly against the relay (it doesn't use `sdk/go`). That handshake no
+> longer exists server-side after `docs/tasks/01-server.md` landed. Tracked for a
+> rewrite on top of `sdk/go` once Protocol v1 lands there too, see the tracking issue
+> for status. Left in place rather than deleted so the rewrite has a reference for what
+> the demo should still do.
+
 > Two devices. One setup command. Fully encrypted. Live in under 5 minutes.
 
 **Device A** → `[Noise-encrypted frame]` → **Relayly relay** → `[Noise-encrypted frame]` → **Device B**

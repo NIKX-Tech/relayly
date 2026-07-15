@@ -20,7 +20,6 @@ type Config struct {
 	Port      int       `mapstructure:"port"`
 	TLS       TLSConfig `mapstructure:"tls"`
 	DB        DBConfig  `mapstructure:"db"`
-	Noise     NoiseCfg  `mapstructure:"noise"`
 	Admin     AdminCfg  `mapstructure:"admin"`
 	Log       LogCfg    `mapstructure:"log"`
 	WebSocket WSCfg     `mapstructure:"websocket"`
@@ -36,11 +35,6 @@ type TLSConfig struct {
 // DBConfig holds SQLite settings.
 type DBConfig struct {
 	Path string `mapstructure:"path"`
-}
-
-// NoiseCfg holds the path to the server's Noise static keypair.
-type NoiseCfg struct {
-	KeyPath string `mapstructure:"key_path"`
 }
 
 // AdminCfg controls the optional admin HTTP server.
@@ -126,7 +120,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("port", 8080)
 	v.SetDefault("tls.enabled", false)
 	v.SetDefault("db.path", "./data/relayly.db")
-	v.SetDefault("noise.key_path", "./data/server.noise.key")
 	v.SetDefault("admin.enabled", true)
 	v.SetDefault("admin.host", "127.0.0.1")
 	v.SetDefault("admin.port", 8081)

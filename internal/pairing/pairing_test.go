@@ -7,10 +7,10 @@ import (
 	"github.com/NIKX-Tech/relayly/internal/pairing"
 )
 
-func TestGeneratePairToken(t *testing.T) {
+func TestGenerateDeviceToken(t *testing.T) {
 	t.Parallel()
 
-	token, err := pairing.GeneratePairToken()
+	token, err := pairing.GenerateDeviceToken()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -27,12 +27,12 @@ func TestGeneratePairToken(t *testing.T) {
 	}
 }
 
-func TestGeneratePairToken_Uniqueness(t *testing.T) {
+func TestGenerateDeviceToken_Uniqueness(t *testing.T) {
 	t.Parallel()
 
 	seen := make(map[string]struct{})
 	for i := 0; i < 1000; i++ {
-		token, err := pairing.GeneratePairToken()
+		token, err := pairing.GenerateDeviceToken()
 		if err != nil {
 			t.Fatalf("iteration %d: %v", i, err)
 		}
@@ -56,7 +56,7 @@ func TestNewDevice(t *testing.T) {
 	if d.ID == "" {
 		t.Error("ID must not be empty")
 	}
-	if d.PairToken == "" {
-		t.Error("PairToken must not be empty")
+	if d.DeviceToken == "" {
+		t.Error("DeviceToken must not be empty")
 	}
 }

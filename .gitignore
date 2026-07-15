@@ -22,10 +22,6 @@ go.work.sum
 *.db-wal
 pair-*.png
 
-# Noise keypairs (sensitive)
-*.noise.key
-*.noise.pub
-
 # Config overrides
 relayly.local.yaml
 

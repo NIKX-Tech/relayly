@@ -4,6 +4,7 @@ package database_test
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -24,10 +25,10 @@ func openMem(t *testing.T) *database.DB {
 // fixture returns a minimal valid Device ready for insertion.
 func fixture(id, name, token string) *database.Device {
 	return &database.Device{
-		ID:        id,
-		Name:      name,
-		PairToken: token,
-		CreatedAt: time.Now().UTC(),
+		ID:          id,
+		Name:        name,
+		DeviceToken: token,
+		CreatedAt:   time.Now().UTC(),
 	}
 }
 
@@ -79,8 +80,8 @@ func TestGetDeviceByID_Found(t *testing.T) {
 	if got.Name != "desktop" {
 		t.Errorf("Name: want 'desktop', got %q", got.Name)
 	}
-	if got.PairToken != "tok-xyz" {
-		t.Errorf("PairToken: want 'tok-xyz', got %q", got.PairToken)
+	if got.DeviceToken != "tok-xyz" {
+		t.Errorf("DeviceToken: want 'tok-xyz', got %q", got.DeviceToken)
 	}
 	if got.PairedWith != nil {
 		t.Errorf("PairedWith should be nil for unpaired device")
@@ -95,14 +96,14 @@ func TestGetDeviceByID_NotFound(t *testing.T) {
 	}
 }
 
-// ── GetDeviceByToken ──────────────────────────────────────────────────────────
+// ── GetDeviceByDeviceToken ────────────────────────────────────────────────────
 
-func TestGetDeviceByToken_Found(t *testing.T) {
+func TestGetDeviceByDeviceToken_Found(t *testing.T) {
 	db := openMem(t)
 	if err := db.CreateDevice(fixture("id-t", "tablet", "unique-token-99")); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	got, err := db.GetDeviceByToken("unique-token-99")
+	got, err := db.GetDeviceByDeviceToken("unique-token-99")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -111,9 +112,9 @@ func TestGetDeviceByToken_Found(t *testing.T) {
 	}
 }
 
-func TestGetDeviceByToken_NotFound(t *testing.T) {
+func TestGetDeviceByDeviceToken_NotFound(t *testing.T) {
 	db := openMem(t)
-	_, err := db.GetDeviceByToken("ghost-token")
+	_, err := db.GetDeviceByDeviceToken("ghost-token")
 	if !errors.Is(err, database.ErrNotFound) {
 		t.Errorf("want ErrNotFound, got %v", err)
 	}
@@ -231,6 +232,126 @@ func TestUpdatePublicKey(t *testing.T) {
 	}
 	if got.PublicKey != pubKey {
 		t.Errorf("PublicKey: want %q, got %q", pubKey, got.PublicKey)
+	}
+}
+
+// ── SetStaticKeyIfUnset ───────────────────────────────────────────────────────
+
+func TestSetStaticKeyIfUnset_FirstAnnouncementPersists(t *testing.T) {
+	db := openMem(t)
+	if err := db.CreateDevice(fixture("sk1", "s", "sktok")); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := db.SetStaticKeyIfUnset("sk1", "key-a"); err != nil {
+		t.Fatalf("first announce: %v", err)
+	}
+	got, err := db.GetDeviceByID("sk1")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.StaticKey != "key-a" {
+		t.Errorf("StaticKey: want %q, got %q", "key-a", got.StaticKey)
+	}
+}
+
+func TestSetStaticKeyIfUnset_SameKeyIsIdempotent(t *testing.T) {
+	db := openMem(t)
+	if err := db.CreateDevice(fixture("sk2", "s", "sktok2")); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := db.SetStaticKeyIfUnset("sk2", "key-a"); err != nil {
+		t.Fatalf("first announce: %v", err)
+	}
+	if err := db.SetStaticKeyIfUnset("sk2", "key-a"); err != nil {
+		t.Errorf("re-announcing the same key should not error, got %v", err)
+	}
+}
+
+func TestSetStaticKeyIfUnset_MismatchRejected(t *testing.T) {
+	db := openMem(t)
+	if err := db.CreateDevice(fixture("sk3", "s", "sktok3")); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := db.SetStaticKeyIfUnset("sk3", "key-a"); err != nil {
+		t.Fatalf("first announce: %v", err)
+	}
+	if err := db.SetStaticKeyIfUnset("sk3", "key-b"); !errors.Is(err, database.ErrStaticKeyMismatch) {
+		t.Errorf("want ErrStaticKeyMismatch, got %v", err)
+	}
+	// The original key must still be in place after the rejected attempt.
+	got, err := db.GetDeviceByID("sk3")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.StaticKey != "key-a" {
+		t.Errorf("StaticKey should remain %q after mismatch, got %q", "key-a", got.StaticKey)
+	}
+}
+
+func TestSetStaticKeyIfUnset_NotFound(t *testing.T) {
+	db := openMem(t)
+	err := db.SetStaticKeyIfUnset("ghost", "key-a")
+	if !errors.Is(err, database.ErrNotFound) {
+		t.Errorf("want ErrNotFound, got %v", err)
+	}
+}
+
+// ── migrations on reopen ──────────────────────────────────────────────────────
+
+// TestMigrate_ReopenAlreadyMigratedFile is a regression test: migration v1 used to
+// run its CREATE INDEX unconditionally on every Open(), including against a database
+// that migration v3 had already renamed pair_token away from, on the next process
+// start (e.g. after a restart) that failed with "no such column: pair_token". Every
+// migration must now run exactly once ever, on a real file reopened more than once.
+func TestMigrate_ReopenAlreadyMigratedFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "relayly.db")
+
+	db1, err := database.Open(path)
+	if err != nil {
+		t.Fatalf("first open: %v", err)
+	}
+	if err := db1.CreateDevice(fixture("dev-1", "one", "tok-1")); err != nil {
+		t.Fatalf("create device: %v", err)
+	}
+	if err := db1.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	// Reopening the same, already-migrated file (simulating a server restart) must
+	// not re-run any migration's SQL.
+	db2, err := database.Open(path)
+	if err != nil {
+		t.Fatalf("second open (reopen after migrations already ran): %v", err)
+	}
+	defer db2.Close()
+
+	got, err := db2.GetDeviceByID("dev-1")
+	if err != nil {
+		t.Fatalf("get after reopen: %v", err)
+	}
+	if got.DeviceToken != "tok-1" {
+		t.Errorf("DeviceToken survived reopen: want tok-1, got %q", got.DeviceToken)
+	}
+
+	// A third open, for good measure — nothing about this should be a one-shot fix.
+	db3, err := database.Open(path)
+	if err != nil {
+		t.Fatalf("third open: %v", err)
+	}
+	defer db3.Close()
+}
+
+func TestNewDevice_StaticKeyStartsEmpty(t *testing.T) {
+	db := openMem(t)
+	if err := db.CreateDevice(fixture("mig1", "m", "migtok")); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	got, err := db.GetDeviceByID("mig1")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.StaticKey != "" {
+		t.Errorf("fresh device should have empty StaticKey until announce_key, got %q", got.StaticKey)
 	}
 }
 
