@@ -25,10 +25,17 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Register (or reuse) this device's server-issued credentials
+	deviceID, deviceToken, err := registerOrLoadDevice(cfg.ServerURL, cfg.CredsPath, cfg.Name)
+	if err != nil {
+		log.Fatalf("device registration error: %v", err)
+	}
+
 	// Connect to the relay server
 	client, err := relayly.Connect(ctx, cfg.ServerURL, relayly.Options{
-		DeviceID:   cfg.DeviceID,
-		PrivateKey: key,
+		DeviceID:    deviceID,
+		DeviceToken: deviceToken,
+		PrivateKey:  key,
 	})
 	if err != nil {
 		log.Fatalf("connect error: %v", err)

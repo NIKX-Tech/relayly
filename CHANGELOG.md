@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - sdk/go: Protocol v1
+
+Part of the v0.5 "SDK convergence" milestone (`docs/tasks/02-sdks-and-interop.md`);
+`sdk/ts`, `sdk/py`, `sdk/rust`, and the cross-language interop CI matrix land
+separately, each as its own PR/entry.
+
+**Breaking (sdk/go):**
+- Wire protocol rewritten for Protocol v1: `Options` gains a required `DeviceToken`;
+  `Connect` authenticates via query params (no more in-band JSON auth frame);
+  encryption is device-to-device Noise XX (`Noise_XX_25519_ChaChaPoly_BLAKE2s`, via
+  `flynn/noise`) instead of per-message NaCl box. `PrivateKey.Encrypt`/`Decrypt` are
+  removed (encryption is now a stateful session, not a per-message call).
+- New peer key pinning (`docs/PROTOCOL.md` §7.1): persisted to `~/.relayly/peers.json`
+  by default (`Options.PeerStorePath` to override), shared schema with every other
+  official SDK. A peer presenting a different key than its pin hard-fails with the new
+  `ErrPeerKeyMismatch`.
+- `Send` returns the new `ErrNotReady` if a peer's Noise session isn't up yet (only
+  expected right after a reconnect forces a re-handshake); `RequestPairCode`/
+  `AcceptPair`/`PairCode.Wait` block until the handshake actually completes, so the
+  existing "pair then Send" flow is otherwise unchanged.
+- New `Options.OnReady` and `Options.OnPeerStatus` callbacks.
+- `Message.Timestamp` is now local receipt time, not server-assigned (the new binary
+  E2E envelope carries no timestamp field).
+- Device key files are unaffected (same 32-byte X25519 base64 format); peers must
+  re-pair after upgrading, since the pairing/session state itself doesn't carry over.
+
 ## [0.4.0] - 2026-07-15
 
 **Breaking:** the relay's wire protocol changed. See

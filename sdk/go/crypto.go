@@ -5,13 +5,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-
-	"golang.org/x/crypto/nacl/box"
 )
 
-// PrivateKey is an X25519 private key used for NaCl box encryption.
+// PrivateKey is an X25519 private key used as a Noise XX static identity (docs/PROTOCOL.md §6).
 type PrivateKey struct {
 	raw [32]byte
 }
@@ -26,11 +25,11 @@ type PublicKey struct {
 //
 //	key, err := relayly.GenerateKey()
 func GenerateKey() (PrivateKey, error) {
-	_, privRaw, err := box.GenerateKey(rand.Reader)
-	if err != nil {
+	var raw [32]byte
+	if _, err := io.ReadFull(rand.Reader, raw[:]); err != nil {
 		return PrivateKey{}, fmt.Errorf("relayly: failed to generate keypair: %w", err)
 	}
-	return PrivateKey{raw: *privRaw}, nil
+	return PrivateKey{raw: raw}, nil
 }
 
 // PublicKey derives the X25519 public key from this private key using
@@ -127,33 +126,6 @@ func PrivateKeyFromBase64(s string) (PrivateKey, error) {
 	return pk, nil
 }
 
-// Encrypt encrypts plaintext for a recipient using NaCl box.
-// Returns (ciphertext, nonce, error).
-func (pk PrivateKey) Encrypt(plaintext []byte, recipient PublicKey) ([]byte, [24]byte, error) {
-	var nonce [24]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
-		return nil, nonce, fmt.Errorf("relayly: failed to generate nonce: %w", err)
-	}
-
-	ciphertext := box.Seal(nil, plaintext, &nonce, &recipient.raw, &pk.raw)
-	return ciphertext, nonce, nil
-}
-
-// Decrypt decrypts a ciphertext from a sender using NaCl box.
-func (pk PrivateKey) Decrypt(ciphertext, nonce []byte, sender PublicKey) ([]byte, error) {
-	if len(nonce) != 24 {
-		return nil, fmt.Errorf("relayly: invalid nonce length: expected 24, got %d", len(nonce))
-	}
-	var nonceArr [24]byte
-	copy(nonceArr[:], nonce)
-
-	plaintext, ok := box.Open(nil, ciphertext, &nonceArr, &sender.raw, &pk.raw)
-	if !ok {
-		return nil, fmt.Errorf("relayly: decryption failed — corrupted ciphertext or wrong key")
-	}
-	return plaintext, nil
-}
-
 // publicKeyFromBase64 parses a base64-encoded public key.
 func publicKeyFromBase64(s string) (PublicKey, error) {
 	raw, err := decodeBase64(s)
@@ -188,6 +160,3 @@ func expandHome(path string) string {
 	}
 	return path
 }
-
-
-

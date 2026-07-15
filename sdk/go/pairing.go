@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"time"
 )
 
 // PairCode is returned by RequestPairCode and contains the code to share with the other device.
@@ -77,16 +76,4 @@ type PairResult struct {
 
 	// Non-nil if an error occurred
 	Error error
-}
-
-// Message is an incoming decrypted message from a paired peer.
-type Message struct {
-	// From is the device ID of the sender.
-	From string
-
-	// Payload is the decrypted plaintext message.
-	Payload []byte
-
-	// Timestamp is the server-assigned receive timestamp.
-	Timestamp time.Time
 }

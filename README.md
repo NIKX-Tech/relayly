@@ -196,9 +196,11 @@ import relayly "github.com/NIKX-Tech/relayly/sdk/go"
 
 key, _ := relayly.LoadOrGenerateKey("~/.relayly/device.key")
 
+// deviceToken comes from POST /api/v1/devices (or `relayly pair`)
 client, _ := relayly.Connect(ctx, "wss://your-server/ws", relayly.Options{
-    DeviceID:   "my-laptop",
-    PrivateKey: key,
+    DeviceID:    "my-laptop",
+    DeviceToken: deviceToken,
+    PrivateKey:  key,
 })
 defer client.Close()
 
