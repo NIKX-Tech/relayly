@@ -3,6 +3,7 @@ module github.com/NIKX-Tech/relayly/sdk/go
 go 1.24
 
 require (
+	github.com/flynn/noise v1.1.0
 	github.com/gorilla/websocket v1.5.1
 	golang.org/x/crypto v0.22.0
 )
