@@ -10,10 +10,16 @@ import (
 	"go.uber.org/zap"
 )
 
-// Message is an internal relay message: a raw frame from one device to its pair.
+// Message is an internal relay message: a decrypted frame from one device to its pair.
 type Message struct {
-	From    string // device ID
-	Payload []byte // opaque encrypted bytes — never inspected by the relay
+	From string // device ID
+
+	// Payload is plaintext: Client.readPump already decrypted it with the sender's
+	// cipher state before handing it to Route. It is not logged or persisted, but it
+	// is not opaque to the relay process either (see docs/rfc/000-protocol-reconciliation.md).
+	// Route hands it to the peer's Client.writePump, which re-encrypts it with the
+	// peer's own cipher state before it goes out on the wire.
+	Payload []byte
 }
 
 // Hub is the central in-memory registry of connected WebSocket clients.
@@ -69,8 +75,9 @@ func (h *Hub) Run() {
 	}
 }
 
-// Route forwards a message from the sender to its paired device (if online).
-// The payload is forwarded verbatim — the relay is payload-agnostic.
+// Route hands a decrypted message from the sender to its paired device's send queue
+// (if online); Client.writePump re-encrypts it for that device before it goes out.
+// Route itself does not parse or transform the payload beyond that hand-off.
 func (h *Hub) Route(msg Message, pairedDeviceID string) {
 	h.mu.RLock()
 	peer, ok := h.clients[pairedDeviceID]

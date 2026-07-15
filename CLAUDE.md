@@ -57,9 +57,9 @@ sdk/
 examples/go/        Reference implementations using the Go SDK
 ```
 
-**Data flow:** `Handler` (HTTP→WS upgrade) → authenticates via token in SQLite → registers `Client` with the `Hub` → `Hub.Route()` forwards opaque encrypted frames to the paired device. The relay is payload-agnostic; all frames are end-to-end encrypted with Noise Protocol XX (X25519/ChaChaPoly).
+**Data flow:** `Handler` (HTTP→WS upgrade) → authenticates via token in SQLite → registers `Client` with the `Hub` → `Hub.Route()` forwards the already-decrypted payload to the paired device's `Client`, which re-encrypts it under that device's own session before writing it out. Each device runs its own Noise XX handshake (X25519/ChaChaPoly) with the server; the server holds both sides' cipher states and is not currently end-to-end (see `docs/rfc/000-protocol-reconciliation.md`; fix tracked in `docs/tasks/01-server.md`).
 
-**Connection protocol:** WebSocket endpoint is `ws://<host>/ws?device_id=<id>&token=<token>`. After upgrade, the client performs a 3-message Noise XX handshake (binary frames), then subsequent binary frames are forwarded verbatim to the paired device.
+**Connection protocol:** WebSocket endpoint is `ws://<host>/ws?device_id=<id>&token=<token>`. After upgrade, the client performs a 3-message Noise XX handshake with the server itself (binary frames). Subsequent binary frames are decrypted with that session's key, then re-encrypted with the paired device's session key before being written out, not forwarded verbatim. `docs/PROTOCOL.md` defines Protocol v1, which changes this to a real device-to-device handshake relayed verbatim by the server.
 
 **REST API** (served on the relay port under `/api/v1/`):
 - `GET  /api/v1/health` — status, version, uptime, connected device count
@@ -84,5 +84,5 @@ examples/go/        Reference implementations using the Go SDK
 
 - **No CGo**: The SQLite driver must remain `modernc.org/sqlite` (pure-Go). Do not introduce CGo dependencies.
 - **Admin UI stays embedded**: No external asset serving or separate build step for admin. Tailwind loads from CDN.
-- **Server never sees plaintext**: All relay message payloads are opaque encrypted bytes. Do not add any inspection, logging, or transformation of message content.
+- **Server does not persist, log, or transform plaintext**: it currently does see it transiently, in memory, while bridging each device's own Noise session (`internal/relay/client.go` decrypts and re-encrypts every message; see `docs/rfc/000-protocol-reconciliation.md`). Protocol v1 (`docs/PROTOCOL.md`, `docs/tasks/01-server.md`) removes this entirely. Regardless: never add inspection, logging, or transformation of message content.
 - **No accounts or tracking**: The server stores only device IDs, names, tokens, and pair relationships — nothing else.
