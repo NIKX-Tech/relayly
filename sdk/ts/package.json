@@ -10,6 +10,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.mjs",
+      "require": "./dist/react.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.mjs",
+      "require": "./dist/node.js"
     }
   },
   "files": [
@@ -17,8 +27,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
-    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "build": "tsup src/index.ts src/react.ts src/node.ts --format esm,cjs --dts --clean",
+    "dev": "tsup src/index.ts src/react.ts src/node.ts --format esm,cjs --dts --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -31,8 +41,7 @@
     "e2e-encryption",
     "p2p",
     "pairing",
-    "nacl",
-    "tweetnacl"
+    "noise-protocol"
   ],
   "author": "NIKX-Tech",
   "license": "MIT",
@@ -42,16 +51,19 @@
     "directory": "sdk/ts"
   },
   "dependencies": {
-    "tweetnacl": "^1.0.3",
-    "tweetnacl-util": "^0.15.1"
+    "@noble/ciphers": "^2.2.0",
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/react": "^19.2.14",
+    "@types/ws": "^8.5.0",
     "react": "^19.2.6",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^1.0.0"
+    "vitest": "^1.0.0",
+    "ws": "^8.18.0"
   },
   "peerDependencies": {
     "react": ">=17.0.0"

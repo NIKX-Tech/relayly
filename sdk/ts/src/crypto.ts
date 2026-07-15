@@ -1,25 +1,38 @@
 /**
- * End-to-end encryption using NaCl box (X25519 + XSalsa20-Poly1305).
+ * Key generation and encoding helpers. Device identity keys are X25519 (used as the
+ * Noise XX static keypair, docs/PROTOCOL.md §6); actual encryption is a stateful
+ * Noise session (see noise/session.ts), not a function you call per message, so
+ * there's no encrypt()/decrypt() here anymore.
  *
- * Uses the audited tweetnacl library — zero native dependencies,
- * works in browsers, Node.js, and React Native.
+ * Uses @noble/curves (X25519) and @noble/hashes (randomness) — audited, pure
+ * TS/JS, zero native dependencies, works in browsers, Node.js, and React Native.
  */
-import nacl from 'tweetnacl';
-import naclUtil from 'tweetnacl-util';
+import { generateKeypair, publicKeyFromPrivate } from './noise/primitives.js';
 import type { KeyPair, RawKey } from './types.js';
 
-// tweetnacl-util API:
-//   encodeBase64(arr: Uint8Array) → string
-//   decodeBase64(s: string) → Uint8Array
-//   encodeUTF8(arr: Uint8Array) → string   (Uint8Array → UTF-8 string)
-//   decodeUTF8(s: string) → Uint8Array     (UTF-8 string → Uint8Array)
+export function encodeBase64(bytes: Uint8Array): string {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(bytes).toString('base64');
+  }
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
 
-export const encodeBase64 = (arr: Uint8Array): string => naclUtil.encodeBase64(arr);
-export const decodeBase64 = (s: string): Uint8Array => naclUtil.decodeBase64(s);
+export function decodeBase64(s: string): Uint8Array {
+  if (typeof Buffer !== 'undefined') {
+    return new Uint8Array(Buffer.from(s, 'base64'));
+  }
+  const binary = atob(s);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 /** Convert a UTF-8 string to Uint8Array bytes */
-export const stringToBytes = (s: string): Uint8Array => naclUtil.decodeUTF8(s);
+export const stringToBytes = (s: string): Uint8Array => new TextEncoder().encode(s);
 /** Convert Uint8Array bytes to a UTF-8 string */
-export const bytesToString = (arr: Uint8Array): string => naclUtil.encodeUTF8(arr);
+export const bytesToString = (arr: Uint8Array): string => new TextDecoder().decode(arr);
 
 /**
  * Generate a new random X25519 keypair.
@@ -29,15 +42,14 @@ export const bytesToString = (arr: Uint8Array): string => naclUtil.encodeUTF8(ar
  * localStorage.setItem('relayly_private_key', encodeBase64(key.privateKey));
  */
 export function generateKey(): KeyPair {
-  const kp = nacl.box.keyPair();
-  return {
-    privateKey: kp.secretKey,
-    publicKey: kp.publicKey,
-  };
+  const kp = generateKeypair();
+  return { privateKey: kp.privateKey, publicKey: kp.publicKey };
 }
 
 /**
- * Restore a keypair from a previously saved base64-encoded private key.
+ * Restore a keypair from a previously saved base64-encoded private key. Reads the
+ * same on-disk format the pre-Protocol-v1 SDK used (32-byte X25519 key, base64), so
+ * existing device key files remain valid.
  *
  * @example
  * const saved = localStorage.getItem('relayly_private_key');
@@ -48,45 +60,7 @@ export function keyPairFromPrivateKey(base64PrivateKey: string): KeyPair {
   if (privateKey.length !== 32) {
     throw new Error(`relayly: invalid private key length — expected 32 bytes, got ${privateKey.length}`);
   }
-  const kp = nacl.box.keyPair.fromSecretKey(privateKey);
-  return {
-    privateKey: kp.secretKey,
-    publicKey: kp.publicKey,
-  };
+  return { privateKey, publicKey: publicKeyFromPrivate(privateKey) };
 }
 
-/**
- * Encrypt a plaintext message for a recipient using NaCl box.
- *
- * @returns { ciphertext, nonce } — both as Uint8Array
- */
-export function encrypt(
-  plaintext: Uint8Array,
-  recipientPublicKey: RawKey,
-  senderPrivateKey: RawKey,
-): { ciphertext: Uint8Array; nonce: Uint8Array } {
-  const nonce = nacl.randomBytes(nacl.box.nonceLength);
-  const ciphertext = nacl.box(plaintext, nonce, recipientPublicKey, senderPrivateKey);
-  if (!ciphertext) {
-    throw new Error('relayly: encryption failed');
-  }
-  return { ciphertext, nonce };
-}
-
-/**
- * Decrypt a ciphertext from a sender using NaCl box.
- *
- * @throws if decryption fails (wrong key, corrupted data, or tampered message)
- */
-export function decrypt(
-  ciphertext: Uint8Array,
-  nonce: Uint8Array,
-  senderPublicKey: RawKey,
-  recipientPrivateKey: RawKey,
-): Uint8Array {
-  const plaintext = nacl.box.open(ciphertext, nonce, senderPublicKey, recipientPrivateKey);
-  if (!plaintext) {
-    throw new Error('relayly: decryption failed — message may be corrupted or key mismatch');
-  }
-  return plaintext;
-}
+export type { KeyPair, RawKey };

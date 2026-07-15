@@ -1,6 +1,7 @@
 /**
  * Shared TypeScript types for the relayly-client library.
  */
+import type { PeerKeyStore } from './peerStore.js';
 
 // ─── Keys ────────────────────────────────────────────────────────────────────
 
@@ -10,8 +11,8 @@
 export type RawKey = Uint8Array;
 
 /**
- * A Relayly keypair — private key is used for signing/decryption,
- * public key is shared with peers during pairing.
+ * A Relayly keypair — the device's static identity, used as the Noise XX static
+ * keypair (docs/PROTOCOL.md §6) for device-to-device end-to-end encryption.
  */
 export interface KeyPair {
   /** 32-byte X25519 private key (Curve25519) */
@@ -36,12 +37,14 @@ export interface PairCode {
 }
 
 /**
- * A paired remote device.
+ * A paired remote device, with its Noise handshake already complete and pinned
+ * (docs/PROTOCOL.md §7.1) — safe to send() to immediately.
  */
 export interface Peer {
   /** The device identifier registered with the server. */
   id: string;
-  /** 32-byte X25519 public key of the remote device. */
+  /** 32-byte X25519 public key of the remote device, as authenticated by the Noise
+   * handshake (not merely the server's announced value). */
   publicKey: RawKey;
 }
 
@@ -57,7 +60,9 @@ export interface RelayMessage {
   payload: string;
   /** Raw decrypted bytes (same data as payload, in Uint8Array form). */
   rawPayload: Uint8Array;
-  /** Server-assigned receive timestamp. */
+  /** When this client received and decrypted the message. The E2E transport
+   * envelope (docs/PROTOCOL.md §6) carries no timestamp of its own, so this is a
+   * local receipt time, not a server-assigned one. */
   timestamp: Date;
 }
 
@@ -69,8 +74,14 @@ export interface RelayMessage {
 export interface RelaylyClientEvents {
   /** Fired when a message is received from a paired peer. */
   message: (msg: RelayMessage) => void;
-  /** Fired when pairing is complete (either side). */
+  /** Fired when pairing is complete (either side) and the Noise handshake is up. */
   paired: (peer: Peer) => void;
+  /** Fired whenever a peer's session becomes usable for send() — both after the
+   * first pairing and after any later re-handshake following a reconnect
+   * (docs/PROTOCOL.md §6). */
+  ready: (peerId: string) => void;
+  /** Fired when the server reports the paired peer's online/offline transition. */
+  peerStatus: (peerId: string, online: boolean) => void;
   /** Fired when the WebSocket connection is established (or re-established). */
   connected: () => void;
   /** Fired when the connection drops. Will attempt reconnect unless closed. */
@@ -99,11 +110,21 @@ export interface RelaylyError extends Error {
 export interface RelaylyClientOptions {
   /** Unique identifier for this device. Required. */
   deviceId: string;
+  /** Authenticates this device to the relay (docs/PROTOCOL.md §2, §3). Obtain one
+   * from POST /api/v1/devices (or the relayly CLI's `pair` command). Required. */
+  deviceToken: string;
   /**
    * The device's keypair. Use generateKey() to create one.
    * Persist the private key across sessions for a stable identity.
    */
   keyPair: KeyPair;
+  /**
+   * Where pinned peer static keys (docs/PROTOCOL.md §7.1) are persisted. Defaults to
+   * an in-memory store (does not survive a reload/restart, logs a warning). Pass a
+   * `FilePeerKeyStore` from `relayly-client/node` under Node.js for a persistent,
+   * cross-SDK-compatible pin.
+   */
+  peerStore?: PeerKeyStore;
   /**
    * How often to send keepalive pings (ms). Default: 30_000.
    */
@@ -121,21 +142,27 @@ export interface RelaylyClientOptions {
 
 // ─── Wire Protocol ───────────────────────────────────────────────────────────
 
-/** Internal wire frame — not exported as part of the public API. */
+/** One entry of welcome's peers array. */
+export interface WirePeer {
+  id: string;
+  static_key: string;
+}
+
+/**
+ * Internal control-channel frame (docs/PROTOCOL.md §5) — not exported as part of
+ * the public API. Carried on WebSocket text frames only; encrypted application data
+ * travels as a binary E2E envelope (see noise/session.ts), never as JSON.
+ */
 export interface WireMessage {
   type: string;
+  protocol_version?: number;
   device_id?: string;
-  public_key?: string;
-  session_id?: string;
+  peers?: WirePeer[];
+  static_key?: string;
   code?: string;
   expires_in?: number;
   peer_id?: string;
-  peer_public_key?: string;
-  to?: string;
-  from?: string;
-  payload?: string;
-  nonce?: string;
-  timestamp?: string;
-  error_code?: string;
+  peer_static_key?: string;
+  online?: boolean;
   message?: string;
 }

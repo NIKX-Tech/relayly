@@ -33,7 +33,7 @@ log:
 websocket:
   # Maximum message size in bytes (default 64 KiB)
   max_message_bytes: 65536
-  # Ping interval (seconds)
-  ping_interval: 30
-  # Read/write deadline (seconds)
-  deadline: 60
+  # Ping interval
+  ping_interval: "30s"
+  # Read/write deadline
+  deadline: "60s"
