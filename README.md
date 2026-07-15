@@ -3,9 +3,7 @@
 
 <img src="docs/images/logo.png" width="70" alt="Relayly Logo">
 
-**Lightweight, self-hosted WebSocket relay for local-first device communication.** Working
-toward device-to-device end-to-end encryption as [Protocol v1](docs/PROTOCOL.md); see the
-status note below before relying on this for anything sensitive.
+**Lightweight, self-hosted WebSocket relay for local-first, end-to-end encrypted device communication.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/NIKX-Tech/relayly/ci.yml?branch=main&style=flat-square&label=build)](https://github.com/NIKX-Tech/relayly/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/NIKX-Tech/relayly?label=openssf%20scorecard&style=flat-square)](https://securityscorecards.dev/projects/github.com/NIKX-Tech/relayly)
@@ -28,17 +26,18 @@ status note below before relying on this for anything sensitive.
 [![Website](https://img.shields.io/badge/website-relayly.app-4F46E5?style=flat-square&logo=google-chrome&logoColor=white)](https://relayly.app)
 [![Discord](https://img.shields.io/badge/discord-join%20chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/cTFMfk6V7)
 
-Relayly routes messages between your own devices (phone, laptop, desktop, etc.) through a
-relay server you control. Each device authenticates to the relay and runs a [Noise
-Protocol](https://noiseprotocol.org/) XX handshake with it.
+Relayly enables trustless message routing between your own devices (phone, laptop,
+desktop, etc.) through a server you control. Encryption runs device-to-device using the
+[Noise Protocol](https://noiseprotocol.org/) (`Noise_XX_25519_ChaChaPoly_BLAKE2s`); the
+relay authenticates devices and mediates pairing, but holds no key material capable of
+reading message content, see [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the exact contract.
 
-> **Status:** today the relay itself terminates that Noise session, decrypting each
-> message and re-encrypting it for the paired device, it is not yet a zero-knowledge
-> relay, despite earlier claims in this README and in code comments. That gap, how it
-> happened, and the fix are written up in [RFC-000](docs/rfc/000-protocol-reconciliation.md)
-> and the normative [`docs/PROTOCOL.md`](docs/PROTOCOL.md) (device-to-device Noise XX,
-> relay holds no cipher states). See [`docs/ROADMAP.md`](docs/ROADMAP.md) for where that
-> work stands.
+> **SDK status:** the server implements Protocol v1 as of `docs/tasks/01-server.md`.
+> The official SDKs (`sdk/go`, `sdk/ts`, `sdk/py`, `sdk/rust`) do not yet, they still
+> speak the pre-v1 wire format and cannot connect to this server until
+> `docs/tasks/02-sdks-and-interop.md` lands. See
+> [RFC-000](docs/rfc/000-protocol-reconciliation.md) for why, and
+> [`docs/ROADMAP.md`](docs/ROADMAP.md) for where that work stands.
 
 ---
 
@@ -62,7 +61,7 @@ Protocol](https://noiseprotocol.org/) XX handshake with it.
 
 | Feature | Detail |
 |---|---|
-| 🔐 **Transport Encryption** | Noise Protocol XX (X25519, ChaChaPoly) between each device and the relay today; device-to-device end-to-end encryption is landing as [Protocol v1](docs/PROTOCOL.md) |
+| 🔐 **End-to-End Encryption** | Noise Protocol XX (X25519, ChaChaPoly) device-to-device; the relay holds no key material capable of reading messages |
 | 📱 **Device Pairing** | 6-digit short code or QR code, no accounts required |
 | ⚡ **Real-time Forwarding** | Low-latency WebSocket relaying with minimal server overhead |
 | ♻️ **Auto-reconnect** | Exponential-backoff reconnection built into SDKs |
@@ -75,10 +74,10 @@ Protocol](https://noiseprotocol.org/) XX handshake with it.
 
 ## ⚙️ How it Works
 
-Relayly authenticates each device and mediates pairing between them. As implemented
-today it is **not** a blind forwarder: each device runs its own Noise XX handshake
-directly with the server, and the server decrypts and re-encrypts every message in
-between.
+Relayly authenticates devices, mediates pairing, and relays two kinds of WebSocket
+frames: JSON control messages (text) and an opaque E2E envelope (binary). The Noise XX
+handshake and all message encryption happen **device-to-device**; the relay forwards the
+binary envelope verbatim and holds no key material that could decrypt it.
 
 ```mermaid
 sequenceDiagram
@@ -86,38 +85,51 @@ sequenceDiagram
     participant R as Relayly Server
     participant B as Device B
 
-    Note over A,R: Noise XX Handshake (A <-> Server)
-    A->>R: Handshake Message 1 (Ephemeral Pubkey)
-    R->>A: Handshake Message 2 (Encrypted Static + Ephemeral)
-    A->>R: Handshake Message 3 (Encrypted Static)
+    Note over A,R: Connect + control channel (JSON text frames)
+    A->>R: connect ?device_id&token
+    R->>A: welcome
+    A->>R: announce_key
 
-    Note over R,B: Noise XX Handshake (Server <-> B), independently
-    B->>R: Handshake Message 1 (Ephemeral Pubkey)
-    R->>B: Handshake Message 2 (Encrypted Static + Ephemeral)
-    B->>R: Handshake Message 3 (Encrypted Static)
+    Note over A,B: Pairing (in-band 6-digit code, relayed by R)
+    A->>R: pair_request
+    R->>A: pair_code
+    B->>R: pair_accept {code}
+    R->>A: pair_complete
+    R->>B: pair_complete
 
-    Note over A,B: Transport: the server decrypts and re-encrypts each message
-    A->>R: Ciphertext (A's session key)
-    R->>B: Re-encrypted ciphertext (B's session key)
-    B->>R: Ciphertext (B's session key)
-    R->>A: Re-encrypted ciphertext (A's session key)
+    Note over A,B: Noise XX handshake — device-to-device (binary envelope, relayed verbatim)
+    B->>R: msg1
+    R->>A: msg1
+    A->>R: msg2
+    R->>B: msg2
+    B->>R: msg3
+    R->>A: msg3
+
+    Note over A,B: Transport (binary envelope, relayed verbatim — R never decrypts)
+    A->>R: ciphertext
+    R->>B: ciphertext, byte-identical
+    B->>R: ciphertext
+    R->>A: ciphertext, byte-identical
 ```
 
 ### Encryption Details
 
-Relayly uses **Noise Protocol XX** for the handshake and transport encryption between
-each device and the server. This provides:
+Relayly runs **Noise Protocol XX** (`Noise_XX_25519_ChaChaPoly_BLAKE2s`) between the two
+paired devices. This provides:
 
-- **Mutual Authentication**: each device and the server verify each other's static
-  public keys during that device's own handshake.
-- **Forward Secrecy**: session keys are ephemeral and discarded when a connection ends.
-- **Not yet zero-knowledge**: the server holds live Noise cipher states for every
-  connected device and briefly holds plaintext in memory to re-encrypt it for the
-  paired device. It does not persist or log message content. True device-to-device
-  end-to-end encryption, where the relay never holds key material capable of reading
-  traffic, is the target of [Protocol v1](docs/PROTOCOL.md); see
-  [RFC-000](docs/rfc/000-protocol-reconciliation.md) for why this changed and the plan
-  to get there.
+- **Mutual Authentication**: the two devices verify each other's static public keys
+  directly with each other, the relay is not a party to the handshake.
+- **Forward Secrecy**: session keys are ephemeral; a fresh handshake runs on reconnect
+  per the initiator rule in [`docs/PROTOCOL.md`](docs/PROTOCOL.md#6-e2e-channel-binary-frames).
+- **Zero-Knowledge Relay**: the relay holds no cipher states and cannot decrypt the
+  binary envelope; it only sees who is talking to whom and how much, not the content.
+  Client-side key pinning (not just the relay's own announced-key check) is the real
+  security boundary, see §7 of the spec.
+
+Two layers of key locking guard against a compromised relay: devices pin the peer's
+static key on first pairing (the actual boundary), and the relay separately locks each
+device's *announced* key as defense in depth. See
+[RFC-000](docs/rfc/000-protocol-reconciliation.md) for how this design was chosen.
 
 ---
 
@@ -305,7 +317,6 @@ All options can be set in `config/relayly.yaml` or via environment variables (`R
 | `host` | `0.0.0.0` | Listen address |
 | `port` | `8080` | Relay WebSocket port |
 | `db.path` | `./data/relayly.db` | SQLite file |
-| `noise.key_path` | `./data/server.noise.key` | Server Noise keypair |
 | `admin.enabled` | `true` | Enable admin UI |
 | `admin.host` | `127.0.0.1` | Admin bind address |
 | `admin.port` | `8081` | Admin port |
@@ -329,24 +340,29 @@ Visit `http://localhost:8081` after starting the server.
 
 ## 🔌 WebSocket Connection Protocol
 
-> This section describes the connection protocol **as implemented today**: each device
-> runs Noise XX with the server itself. `docs/PROTOCOL.md` defines Protocol v1 (Noise XX
-> device-to-device, zero cipher states on the relay); this section will be rewritten once
-> that server work (`docs/tasks/01-server.md`) lands.
+This is a summary; [`docs/PROTOCOL.md`](docs/PROTOCOL.md) is the normative spec.
 
 Clients connect to:
-`ws://<host>:<port>/ws?device_id=<uuid>&token=<pair-token>`
+`ws://<host>:<port>/ws?device_id=<uuid>&token=<device-token>`
 
-### Noise XX Handshake (3 messages, client <-> server)
+Auth happens at the HTTP layer (query params, before the WebSocket upgrade). There is no
+in-band auth frame and no client<->server cryptographic handshake.
 
-1. **Client → Server**: [msg1: ephemeral pubkey]
-2. **Server → Client**: [msg2: encrypted server static + ephemeral]
-3. **Client → Server**: [msg3: encrypted client static]
+### Frame discipline
 
-After handshake, subsequent frames are binary ciphertext under that connection's Noise
-session keys. The relay decrypts each frame from the sender and re-encrypts it for the
-paired device's own session, it does not persist or log the plaintext, but it does
-transiently hold it in memory, so this is not currently a zero-knowledge relay.
+- **Text frames** carry the JSON control channel: `welcome`, `announce_key`, pairing
+  (`pair_request`/`pair_code`/`pair_accept`/`pair_complete`), `peer_status`,
+  `ping`/`pong`, `error`.
+- **Binary frames** carry a 1-byte-prefixed E2E envelope (`0x01` Noise handshake message,
+  `0x02` Noise transport ciphertext) between the two paired devices. The relay forwards
+  these **verbatim**, it does not parse, decrypt, or hold any key material for them.
+
+### Key locking
+
+Two layers, both described in full in `docs/PROTOCOL.md` §7: each device pins its peer's
+static key on first pairing (the real security boundary), and the relay separately locks
+each device's *announced* key as defense in depth against a third party impersonating a
+device to the relay. Neither substitutes for the other.
 
 ---
 
@@ -364,8 +380,8 @@ relay.yourdomain.com {
 
 - [ ] Run behind TLS (Caddy / nginx)
 - [ ] Bind admin UI to `127.0.0.1` (default)
-- [ ] Mount `/data` as a persistent volume (contains DB + keypair)
-- [ ] Back up `/data/relayly.db` and `/data/server.noise.key`
+- [ ] Mount `/data` as a persistent volume (contains the database)
+- [ ] Back up `/data/relayly.db`
 
 ---
 

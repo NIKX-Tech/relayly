@@ -38,43 +38,42 @@ npm run typecheck  # tsc --noEmit
 
 ```
 cmd/relayly/        Entry point — delegates to internal/cli
-cmd/relayly-tester/ Standalone test/benchmark client binary
 internal/
   cli/              Cobra commands: start, pair, link, status
-  relay/            WebSocket hub + handler + per-client I/O pumps + rate limiter
+  relay/            WebSocket hub + handler + per-client I/O pumps + rate limiter +
+                     control channel (control.go) + pairing-code registry (paircodes.go)
   api/              REST API handlers (mounted at /api/ on relay port)
   database/         SQLite via modernc.org/sqlite (pure-Go, no CGo)
-  noise/            Noise Protocol XX keypair load/create
   admin/            HTMX + Tailwind admin UI (embedded in binary, CDN Tailwind)
   config/           Viper config loading (YAML + env vars RELAYLY_*)
-  pairing/          Device pairing code generation/validation
+  pairing/          Device token + in-band pairing code generation
 pkg/
   version/          Build-time version injection via ldflags
-  client/           High-level Go client (Noise handshake + send/recv channels)
 sdk/
-  go/               Go client SDK (separate go.mod, go.work workspace)
-  ts/               TypeScript client SDK (tweetnacl, tsup, vitest)
-examples/go/        Reference implementations using the Go SDK
+  go/               Go client SDK (separate go.mod, go.work workspace; still pre-v1
+                     wire format until docs/tasks/02-sdks-and-interop.md lands)
+  ts/               TypeScript client SDK (tweetnacl, tsup, vitest; same caveat)
+examples/go/        Reference implementations (basic/pair-and-send/clipboard-sync use
+                     sdk/go; chat/ hand-rolls the old protocol directly and is
+                     currently broken, see issue #64)
 ```
 
-**Data flow:** `Handler` (HTTP→WS upgrade) → authenticates via token in SQLite → registers `Client` with the `Hub` → `Hub.Route()` forwards the already-decrypted payload to the paired device's `Client`, which re-encrypts it under that device's own session before writing it out. Each device runs its own Noise XX handshake (X25519/ChaChaPoly) with the server; the server holds both sides' cipher states and is not currently end-to-end (see `docs/rfc/000-protocol-reconciliation.md`; fix tracked in `docs/tasks/01-server.md`).
+**Data flow:** `Handler` (HTTP→WS upgrade) → authenticates via token in SQLite → registers `Client` with the `Hub`, sends `welcome` → text frames go to `handleControl` (`control.go`), binary frames go to `Hub.Route()`, which forwards them verbatim to the paired device's `Client` untouched. The server holds no key material and never decrypts binary frames; E2E is entirely device-to-device Noise XX (X25519/ChaChaPoly), per `docs/PROTOCOL.md`. `grep -r "CipherState" internal/relay` returns nothing.
 
-**Connection protocol:** WebSocket endpoint is `ws://<host>/ws?device_id=<id>&token=<token>`. After upgrade, the client performs a 3-message Noise XX handshake with the server itself (binary frames). Subsequent binary frames are decrypted with that session's key, then re-encrypted with the paired device's session key before being written out, not forwarded verbatim. `docs/PROTOCOL.md` defines Protocol v1, which changes this to a real device-to-device handshake relayed verbatim by the server.
+**Connection protocol:** WebSocket endpoint is `ws://<host>/ws?device_id=<id>&token=<device_token>`. No in-band auth frame, no client<->server handshake: auth is the HTTP-layer query params. After upgrade the server sends `welcome`; text frames are JSON control messages, binary frames are a 1-byte-prefixed E2E envelope (`0x01` Noise handshake, `0x02` transport) relayed verbatim between the two paired devices. See `docs/PROTOCOL.md` for the full spec.
 
 **REST API** (served on the relay port under `/api/v1/`):
 - `GET  /api/v1/health` — status, version, uptime, connected device count
 - `GET  /api/v1/devices` — list all registered devices
-- `POST /api/v1/pair` — create a new device (`{"name": "..."}` → `{device_id, pair_token, expires_at}`)
+- `POST /api/v1/devices` — create a new device (`{"name": "..."}` → `{device_id, device_token, expires_at}`); `POST /api/v1/pair` is kept as a deprecated alias (same response shape, adds a `Deprecation: true` header)
 
 **Rate limiting:** WebSocket upgrades are limited to 10 attempts per minute per remote IP (HTTP 429 on excess). Implemented in `internal/relay/ratelimit.go` using a token-bucket per IP with a cleanup goroutine.
 
 **SQLite:** Single-writer, WAL mode, pure-Go driver. Schema and migrations are inlined in `internal/database/db.go` (versioned via `schema_migrations` table). Persistent state is only device records and pairings — no message storage.
 
-**Config layering** (highest priority first): CLI flags → `RELAYLY_*` env vars → `config/relayly.local.yaml` (gitignored, for local overrides) → `config/relayly.yaml`. Key defaults: relay `:8080`, admin `127.0.0.1:8081`, DB `./data/relayly.db`, Noise key `./data/server.noise.key`.
+**Config layering** (highest priority first): CLI flags → `RELAYLY_*` env vars → `config/relayly.local.yaml` (gitignored, for local overrides) → `config/relayly.yaml`. Key defaults: relay `:8080`, admin `127.0.0.1:8081`, DB `./data/relayly.db`. The server holds no static keypair of its own (removed along with `internal/noise` once E2E moved device-to-device).
 
 **Admin UI:** Served on a separate port (default `127.0.0.1:8081`). Uses HTMX for live updates. Tailwind is loaded via CDN; admin UI must remain embedded in the Go binary with no separate build step.
-
-**`pkg/client/` vs `sdk/go/`:** `pkg/client` is a reference implementation inside the main module — it uses `internal/noise` directly and is the basis for `cmd/relayly-tester`. `sdk/go` is the separately-versioned public SDK with its own `go.mod` that consumers import.
 
 **Go workspace:** `sdk/go` has its own `go.mod` and participates in a `go.work` workspace at `go.work`. When working in `sdk/go`, use `go test ./...` from the workspace root or that directory.
 
@@ -84,5 +83,5 @@ examples/go/        Reference implementations using the Go SDK
 
 - **No CGo**: The SQLite driver must remain `modernc.org/sqlite` (pure-Go). Do not introduce CGo dependencies.
 - **Admin UI stays embedded**: No external asset serving or separate build step for admin. Tailwind loads from CDN.
-- **Server does not persist, log, or transform plaintext**: it currently does see it transiently, in memory, while bridging each device's own Noise session (`internal/relay/client.go` decrypts and re-encrypts every message; see `docs/rfc/000-protocol-reconciliation.md`). Protocol v1 (`docs/PROTOCOL.md`, `docs/tasks/01-server.md`) removes this entirely. Regardless: never add inspection, logging, or transformation of message content.
+- **Server never sees plaintext**: binary frames are an opaque E2E envelope the relay forwards verbatim (`internal/relay/hub.go`'s `Route`); it holds no cipher states (`docs/PROTOCOL.md`, `docs/rfc/000-protocol-reconciliation.md`). Do not add any inspection, logging, or transformation of message content.
 - **No accounts or tracking**: The server stores only device IDs, names, tokens, and pair relationships — nothing else.

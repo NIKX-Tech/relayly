@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-15
+
+**Breaking:** the relay's wire protocol changed. See
+[RFC-000](docs/rfc/000-protocol-reconciliation.md) and the normative
+[`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the full story: the server, the four SDKs, and
+the README each spoke a different, mutually incompatible protocol, discovered while
+scoping the C++ SDK, and were never interop-tested against each other. This release makes
+the server a true zero-knowledge relay; the SDKs converge on the same spec next.
+
+### Changed
+- The server holds **zero cipher states**. E2E encryption (Noise XX,
+  `Noise_XX_25519_ChaChaPoly_BLAKE2s`) now runs device-to-device; the relay authenticates
+  devices and mediates pairing but forwards binary frames verbatim and cannot decrypt
+  them, closing the gap called out in `docs/rfc/000-protocol-reconciliation.md`.
+- WebSocket frames now split by type: text frames carry a JSON control channel
+  (`welcome`, `announce_key`, `pair_request`/`pair_code`/`pair_accept`/`pair_complete`,
+  `peer_status`, `ping`/`pong`, `error`), binary frames carry a 1-byte-prefixed E2E
+  envelope (`0x01` handshake, `0x02` transport) relayed verbatim.
+- New in-band pairing flow: `pair_request`/`pair_accept` with a 6-digit code, alongside
+  the existing out-of-band `relayly link`/admin UI flow (both call the same
+  `db.PairDevices`, neither replaces the other).
+- `pair_token` column/field renamed to `device_token` everywhere: DB column,
+  `Device.DeviceToken`, and the REST response field.
+- `POST /api/v1/pair` renamed to `POST /api/v1/devices`; the old path is kept as a
+  deprecated alias (`Deprecation: true` response header), returning the same new
+  `device_token` field.
+- Two-layer key locking (`docs/PROTOCOL.md` §7): each device pins its peer's static key
+  on first pairing (the real security boundary), the server separately locks each
+  device's *announced* key as defense in depth.
+
+### Removed
+- `internal/noise`, `pkg/client`, `cmd/relayly-tester`: all three existed only to
+  exercise the old client<->server Noise handshake. `sdk/go` becomes the reference Go
+  client once it implements Protocol v1.
+- `noise.key_path` config and the server's own static keypair, the server has no
+  long-term identity key of its own anymore.
+
+### Known issues
+- The four official SDKs (`sdk/go`, `sdk/ts`, `sdk/py`, `sdk/rust`) still speak the old
+  wire format and cannot connect to this server yet. Tracked in
+  `docs/tasks/02-sdks-and-interop.md`.
+- `examples/go/chat` hand-rolls the old protocol directly and is currently broken
+  (issue #64), pending a rewrite on `sdk/go` once that's updated.
+- Existing paired devices need to re-pair after upgrading; there is no migration for
+  in-flight Noise sessions (there were none persisted server-side to migrate).
+
 ## [0.3.0] - 2026-05-29
 
 ### Added

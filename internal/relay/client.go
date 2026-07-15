@@ -2,33 +2,51 @@
 package relay
 
 import (
-	"encoding/hex"
-	"fmt"
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
-	flnoise "github.com/flynn/noise"
 	"github.com/NIKX-Tech/relayly/internal/database"
-	"github.com/NIKX-Tech/relayly/internal/noise"
+	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
 
 const (
-	// sendBufferSize is the number of messages that can be queued per client.
+	// sendBufferSize is the number of frames that can be queued per client.
 	sendBufferSize = 256
 )
 
+// wsFrame is an outbound WebSocket frame together with its message type, so writePump
+// can tell a JSON control message (text) apart from a relayed E2E envelope (binary).
+type wsFrame struct {
+	kind       int // websocket.TextMessage or websocket.BinaryMessage
+	data       []byte
+	closeAfter bool // if true, writePump closes the connection right after writing this frame
+}
+
 // Client represents a single device's WebSocket connection.
 type Client struct {
-	DeviceID       string
-	PairedDeviceID string // empty if not paired at connect time
+	DeviceID string
 
-	conn      *websocket.Conn
-	hub       *Hub
-	db        *database.DB
-	serverKey *noise.Keypair
-	send      chan []byte // outbound message queue
+	conn *websocket.Conn
+	hub  *Hub
+	db   *database.DB
+
+	// send is written to from multiple goroutines (this client's own control
+	// handlers, the Hub pushing peer_status, a peer's Client pushing pair_complete),
+	// so sendMu/closed guard it against a send racing close()'s close(c.send): a send
+	// holds the read lock (concurrent sends are fine, channel sends are goroutine-safe
+	// on their own), close holds the write lock, so a send is never in flight while the
+	// channel is being closed.
+	sendMu sync.RWMutex
+	closed bool
+	send   chan wsFrame // outbound frame queue
+
+	// pairedWith is the currently linked peer's device ID, or "" if unpaired.
+	// It is set at connect time from the DB and can change at runtime once in-band
+	// pairing (docs/PROTOCOL.md §5.3) links this client to a peer, so it is guarded
+	// by pairedMu rather than being a plain field read/written across goroutines.
+	pairedMu   sync.RWMutex
+	pairedWith string
 
 	once sync.Once // ensures close() is idempotent
 	log  *zap.Logger
@@ -36,12 +54,6 @@ type Client struct {
 	maxMessageBytes int64
 	pingInterval    time.Duration
 	deadline        time.Duration
-
-	// Cipher states derived from the Noise XX handshake.
-	// decCS = client -> server (decrypts)
-	// encCS = server -> client (encrypts)
-	decCS *flnoise.CipherState
-	encCS *flnoise.CipherState
 }
 
 // NewClient constructs a Client. Call Pump() to start I/O goroutines.
@@ -52,21 +64,50 @@ func NewClient(
 	log *zap.Logger,
 	maxBytes int64,
 	pingInterval, deadline time.Duration,
-	serverKey *noise.Keypair,
 	db *database.DB,
 ) *Client {
 	return &Client{
 		DeviceID:        deviceID,
-		PairedDeviceID:  pairedDeviceID,
+		pairedWith:      pairedDeviceID,
 		conn:            conn,
 		hub:             hub,
 		db:              db,
-		serverKey:       serverKey,
-		send:            make(chan []byte, sendBufferSize),
+		send:            make(chan wsFrame, sendBufferSize),
 		log:             log.With(zap.String("device_id", deviceID)),
 		maxMessageBytes: maxBytes,
 		pingInterval:    pingInterval,
 		deadline:        deadline,
+	}
+}
+
+// Peer returns the currently linked peer's device ID, if any.
+func (c *Client) Peer() (string, bool) {
+	c.pairedMu.RLock()
+	defer c.pairedMu.RUnlock()
+	return c.pairedWith, c.pairedWith != ""
+}
+
+// setPeer links this client to a peer device ID (or clears it, if id is "").
+func (c *Client) setPeer(id string) {
+	c.pairedMu.Lock()
+	c.pairedWith = id
+	c.pairedMu.Unlock()
+}
+
+// enqueue safely queues frame for writePump, from any goroutine. It is a no-op once
+// the client has been closed, and never blocks: if the buffer is full the frame is
+// dropped and enqueue returns false, so callers can react (Hub.Route evicts on this).
+func (c *Client) enqueue(frame wsFrame) bool {
+	c.sendMu.RLock()
+	defer c.sendMu.RUnlock()
+	if c.closed {
+		return false
+	}
+	select {
+	case c.send <- frame:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -78,82 +119,13 @@ func (c *Client) Pump() {
 		c.close()
 	}()
 
-	// Perform Noise XX handshake
-	if err := c.handshake(); err != nil {
-		c.log.Warn("noise handshake failed", zap.Error(err))
-		return
-	}
-
-	// Start writer goroutine
 	go c.writePump()
-
-	// Read pump (runs in the calling goroutine)
 	c.readPump()
 }
 
-// handshake performs the three-message Noise XX exchange as responder.
-func (c *Client) handshake() error {
-	hs, err := noise.NewServerHandshake(c.serverKey)
-	if err != nil {
-		return err
-	}
-
-	_ = c.conn.SetReadDeadline(time.Now().Add(c.deadline))
-	_ = c.conn.SetWriteDeadline(time.Now().Add(c.deadline))
-
-	// Message 1: ← client
-	_, msg1, err := c.conn.ReadMessage()
-	if err != nil {
-		return err
-	}
-	if _, _, _, err := hs.ReadMessage(nil, msg1); err != nil {
-		return fmt.Errorf("reading client handshake msg1: %w", err)
-	}
-
-	// Message 2: → client
-	msg2, _, _, err := hs.WriteMessage(nil, nil)
-	if err != nil {
-		return err
-	}
-	if err := c.conn.WriteMessage(websocket.BinaryMessage, msg2); err != nil {
-		return err
-	}
-
-	// Message 3: ← client
-	_, msg3, err := c.conn.ReadMessage()
-	if err != nil {
-		return err
-	}
-	_, cs1, cs2, err := hs.ReadMessage(nil, msg3)
-	if err != nil {
-		return fmt.Errorf("reading client handshake msg3: %w", err)
-	}
-
-	// Handshake complete — verify/store client public key
-	remotePub := hs.PeerStatic()
-	pubHex := hex.EncodeToString(remotePub)
-
-	device, err := c.db.GetDeviceByID(c.DeviceID)
-	if err == nil {
-		if device.PublicKey == "" {
-			// First handshake: persist the public key
-			_ = c.db.UpdatePublicKey(c.DeviceID, pubHex)
-			c.log.Info("locked device to public key", zap.String("pub", pubHex))
-		} else if device.PublicKey != pubHex {
-			// Subsequent handshake: key must match
-			return fmt.Errorf("public key mismatch: expected %s, got %s", device.PublicKey, pubHex)
-		}
-	}
-
-	// Store cipher states for transport
-	// Noise XX responder: cs1 = initiator->responder, cs2 = responder->initiator
-	c.decCS = cs1
-	c.encCS = cs2
-
-	return nil
-}
-
-// readPump receives frames from the WebSocket and routes them to the peer.
+// readPump receives frames from the WebSocket and dispatches them: text frames are
+// JSON control messages (§5), binary frames are E2E envelopes relayed verbatim to the
+// paired device (§4). The server never parses or decrypts binary frame contents.
 func (c *Client) readPump() {
 	c.conn.SetReadLimit(c.maxMessageBytes)
 	_ = c.conn.SetReadDeadline(time.Now().Add(c.deadline))
@@ -162,7 +134,7 @@ func (c *Client) readPump() {
 	})
 
 	for {
-		_, payload, err := c.conn.ReadMessage()
+		msgType, payload, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err,
 				websocket.CloseGoingAway,
@@ -174,45 +146,41 @@ func (c *Client) readPump() {
 			return
 		}
 
-		if c.PairedDeviceID == "" {
-			// Device isn't paired — silently discard
-			continue
-		}
+		switch msgType {
+		case websocket.TextMessage:
+			c.handleControl(payload)
 
-		// Decrypt the payload using the client-to-server cipher state.
-		plaintext, err := c.decCS.Decrypt(nil, nil, payload)
-		if err != nil {
-			c.log.Warn("decryption failed", zap.Error(err))
-			continue
+		case websocket.BinaryMessage:
+			peerID, ok := c.Peer()
+			if !ok {
+				continue // not paired yet — silently discard (§8)
+			}
+			c.hub.Route(Message{From: c.DeviceID, Payload: payload}, peerID)
 		}
-
-		c.hub.Route(Message{From: c.DeviceID, Payload: plaintext}, c.PairedDeviceID)
 	}
 }
 
-// writePump drains the send channel and writes frames to the WebSocket.
+// writePump drains the send channel and writes frames to the WebSocket, preserving
+// each frame's message type (text control vs. binary envelope).
 func (c *Client) writePump() {
 	ticker := time.NewTicker(c.pingInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case payload, ok := <-c.send:
+		case frame, ok := <-c.send:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(c.deadline))
 			if !ok {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
-			// Encrypt the payload using the server-to-client cipher state.
-			ciphertext, err := c.encCS.Encrypt(nil, nil, payload)
-			if err != nil {
-				c.log.Error("encryption failed", zap.Error(err))
-				continue
-			}
-
-			if err := c.conn.WriteMessage(websocket.BinaryMessage, ciphertext); err != nil {
+			if err := c.conn.WriteMessage(frame.kind, frame.data); err != nil {
 				c.log.Warn("write error", zap.Error(err))
+				return
+			}
+			if frame.closeAfter {
+				_ = c.conn.Close()
 				return
 			}
 
@@ -225,10 +193,14 @@ func (c *Client) writePump() {
 	}
 }
 
-// close tears down the connection idempotently.
+// close tears down the connection idempotently. Taking sendMu's write lock here
+// ensures no enqueue is ever in flight when the channel closes (see enqueue).
 func (c *Client) close() {
 	c.once.Do(func() {
 		_ = c.conn.Close()
+		c.sendMu.Lock()
+		c.closed = true
 		close(c.send)
+		c.sendMu.Unlock()
 	})
 }

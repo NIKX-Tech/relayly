@@ -21,7 +21,6 @@ services:
       RELAYLY_HOST: "0.0.0.0"
       RELAYLY_PORT: "8080"
       RELAYLY_DB_PATH: "/data/relayly.db"
-      RELAYLY_NOISE_KEY_PATH: "/data/server.noise.key"
       RELAYLY_ADMIN_ENABLED: "true"
       RELAYLY_ADMIN_PORT: "8081"
       RELAYLY_LOG_LEVEL: "info"

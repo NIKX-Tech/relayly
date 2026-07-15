@@ -12,7 +12,6 @@ import (
 	"github.com/NIKX-Tech/relayly/internal/api"
 	"github.com/NIKX-Tech/relayly/internal/config"
 	"github.com/NIKX-Tech/relayly/internal/database"
-	"github.com/NIKX-Tech/relayly/internal/noise"
 	"github.com/NIKX-Tech/relayly/internal/relay"
 	"github.com/NIKX-Tech/relayly/pkg/version"
 	"github.com/spf13/cobra"
@@ -57,16 +56,6 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	log.Info("starting relayly", zap.String("addr", cfg.Addr()))
 
-	// ── Noise keypair ────────────────────────────────────────────────────────
-	kp, created, err := noise.LoadOrCreateKeypair(cfg.Noise.KeyPath)
-	if err != nil {
-		return fmt.Errorf("noise keypair: %w", err)
-	}
-	if created {
-		log.Info("generated new Noise keypair", zap.String("path", cfg.Noise.KeyPath))
-	}
-	log.Info("noise public key", zap.String("pub", kp.PublicKeyHex()))
-
 	// ── Database ─────────────────────────────────────────────────────────────
 	db, err := database.Open(cfg.DB.Path)
 	if err != nil {
@@ -81,7 +70,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// ── Relay HTTP server ─────────────────────────────────────────────────
 	relayMux := http.NewServeMux()
-	relayMux.Handle("/ws", relay.RateLimitMiddleware(relay.Handler(hub, db, cfg, log, kp)))
+	relayMux.Handle("/ws", relay.RateLimitMiddleware(relay.Handler(hub, db, cfg, log)))
 	relayMux.HandleFunc("/health", relay.StatusHandler(hub))
 
 	// Mount REST API under /api/

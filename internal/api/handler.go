@@ -37,6 +37,15 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// deprecated wraps a handler to also mark the response as deprecated (docs/PROTOCOL.md
+// §2's migration note), for endpoints kept only as a backward-compatible alias.
+func deprecated(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Deprecation", "true")
+		next(w, r)
+	}
+}
+
 // writeJSON encodes v as JSON and writes it to w.
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -75,20 +84,21 @@ func (s *server) handleListDevices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// ── POST /api/v1/pair ─────────────────────────────────────────────────────────
+// ── POST /api/v1/devices (docs/PROTOCOL.md §2; POST /api/v1/pair kept as a
+// ── deprecated alias, see New() in server.go) ──────────────────────────────────
 
-type pairRequest struct {
+type createDeviceRequest struct {
 	Name string `json:"name"`
 }
 
-type pairResponse struct {
-	DeviceID  string    `json:"device_id"`
-	PairToken string    `json:"pair_token"`
-	ExpiresAt time.Time `json:"expires_at"`
+type createDeviceResponse struct {
+	DeviceID    string    `json:"device_id"`
+	DeviceToken string    `json:"device_token"`
+	ExpiresAt   time.Time `json:"expires_at"`
 }
 
-func (s *server) handlePair(w http.ResponseWriter, r *http.Request) {
-	var req pairRequest
+func (s *server) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
+	var req createDeviceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
 		http.Error(w, "body must be JSON with non-empty \"name\" field", http.StatusBadRequest)
 		return
@@ -107,10 +117,10 @@ func (s *server) handlePair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := pairResponse{
-		DeviceID:  dev.ID,
-		PairToken: dev.PairToken,
-		ExpiresAt: *dev.ExpiresAt,
+	resp := createDeviceResponse{
+		DeviceID:    dev.ID,
+		DeviceToken: dev.DeviceToken,
+		ExpiresAt:   *dev.ExpiresAt,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

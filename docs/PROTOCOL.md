@@ -58,7 +58,7 @@ There is NO in-band auth frame and NO client↔server cryptographic handshake.
 
 The server MUST NOT parse, decrypt, modify, or reorder binary frames. One WebSocket
 binary frame carries exactly one envelope. Frames exceeding the server's
-`max_message_bytes` (config, default 4096) are rejected by closing the connection.
+`max_message_bytes` (config, default 65536) are rejected by closing the connection.
 
 ## 5. Control channel (JSON text frames)
 
