@@ -5,11 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - sdk/go: Protocol v1
+## [Unreleased] - fix: WebSocket ping/deadline config decoded as nanoseconds
+
+`config/relayly.yaml` shipped `websocket.ping_interval`/`websocket.deadline` as bare
+integers (`30`, `60`), which decode straight into the `time.Duration` fields as
+nanoseconds, not seconds. Any deployment that actually loads this file (running the
+binary from the repo root, Docker, systemd with a matching `WorkingDirectory`) got an
+effective ~60ns read deadline, silently dropping every WebSocket connection right after
+the upgrade, before `welcome` could be written, with no warning logged (a deadline
+timeout isn't an "unexpected close"). Fixed by quoting the values as duration strings
+(`"30s"`, `"60s")`; added a regression test (`internal/config/config_test.go`) that
+loads the real shipped file and asserts both durations parse to at least a second.
+Found while debugging why `sdk/ts`'s self-pair integration test hung against a
+manually-started server using this config.
+
+## [Unreleased] - sdk/ts: Protocol v1
 
 Part of the v0.5 "SDK convergence" milestone (`docs/tasks/02-sdks-and-interop.md`);
-`sdk/ts`, `sdk/py`, `sdk/rust`, and the cross-language interop CI matrix land
-separately, each as its own PR/entry.
+`sdk/py`, `sdk/rust`, and the cross-language interop CI matrix land separately, each
+as its own PR/entry.
+
+**Breaking (sdk/ts, the `relayly` npm package):**
+- Wire protocol rewritten for Protocol v1: `RelaylyClientOptions` gains a required
+  `deviceToken`; the client authenticates via query params (no more in-band JSON auth
+  frame); encryption is device-to-device Noise XX (`Noise_XX_25519_ChaChaPoly_BLAKE2s`)
+  instead of per-message NaCl box. Replaces the `tweetnacl`/`tweetnacl-util`
+  dependencies with `@noble/curves`, `@noble/ciphers`, `@noble/hashes` — no maintained
+  JS Noise library fit this exact cipher suite, so the XX state machine is
+  hand-written over those primitive libraries and verified byte-for-byte against
+  `flynn/noise` (see `sdk/ts/README.md`'s "Why hand-written Noise?").
+- `crypto.ts`'s `encrypt`/`decrypt` are removed (encryption is now a stateful Noise
+  session, not a per-message function call).
+- New peer key pinning (`docs/PROTOCOL.md` §7.1): an injectable `PeerKeyStore`
+  (`RelaylyClientOptions.peerStore`), in-memory by default (logs a warning: pins don't
+  survive a reload/restart). A new `relayly/node` entry point exports
+  `FilePeerKeyStore`, reading/writing the same `~/.relayly/peers.json` schema shared
+  with every other official SDK. A peer presenting a different key than its pin
+  throws the new `PeerKeyMismatchError`.
+- `send()` throws the new `NotReadyError` if a peer's Noise session isn't up yet (only
+  expected right after a reconnect forces a re-handshake); `acceptPair()`/
+  `waitForPairing()` block until the handshake actually completes, so the existing
+  pairing flow is otherwise unchanged.
+- New `ready` and `peerStatus` client events.
+- `RelayMessage.timestamp` is now local receipt time, not server-assigned (the new
+  binary E2E envelope carries no timestamp field).
+- The `relayly/react` entry point is now actually built and published (`exports`/
+  build script previously only covered the main entry, despite the hooks existing in
+  source) — fixed as part of adding the parallel `relayly/node` entry.
+
+## [Unreleased] - sdk/go: Protocol v1
 
 **Breaking (sdk/go):**
 - Wire protocol rewritten for Protocol v1: `Options` gains a required `DeviceToken`;

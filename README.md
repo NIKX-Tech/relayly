@@ -223,12 +223,20 @@ npm install relayly
 ```typescript
 import { RelaylyClient, generateKey } from 'relayly';
 
-const client = new RelaylyClient('wss://your-server', {
+// deviceToken comes from POST /api/v1/devices
+const client = new RelaylyClient('wss://your-server/ws', {
   deviceId: 'my-laptop',
+  deviceToken,
   keyPair: generateKey(),
 });
 
 await client.connect();
+
+const code = await client.requestPairCode();
+console.log('Code:', code.shortCode);
+
+const peer = await client.acceptPair('483921');
+await client.send(peer.id, 'hello!');
 client.on('message', (msg) => console.log(msg.payload));
 ```
 

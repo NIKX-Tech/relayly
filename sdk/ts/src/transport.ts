@@ -6,14 +6,14 @@
 const DEFAULT_RECONNECT_DELAY_MS = 1_000;
 const DEFAULT_MAX_RECONNECT_DELAY_MS = 60_000;
 
-export type TransportMessage = string;
-
 export interface TransportOptions {
   reconnectDelayMs?: number;
   maxReconnectDelayMs?: number;
   onOpen?: () => void;
   onClose?: (reason: string) => void;
-  onMessage?: (data: string) => void;
+  /** JSON control frames arrive as string; E2E envelopes (docs/PROTOCOL.md §6) arrive
+   * as Uint8Array. */
+  onMessage?: (data: string | Uint8Array) => void;
   onReconnecting?: (attempt: number) => void;
 }
 
@@ -47,6 +47,7 @@ export class WebSocketTransport {
     if (this._closed) return;
 
     const ws = new WebSocket(this.url);
+    ws.binaryType = 'arraybuffer';
     this.ws = ws;
 
     ws.addEventListener('open', () => {
@@ -69,12 +70,17 @@ export class WebSocketTransport {
     ws.addEventListener('message', (event) => {
       if (typeof event.data === 'string') {
         this.opts.onMessage(event.data);
+      } else if (event.data instanceof ArrayBuffer) {
+        this.opts.onMessage(new Uint8Array(event.data));
       }
+      // binaryType is set to 'arraybuffer' above, so Blob shouldn't occur; any other
+      // shape (e.g. a raw Buffer/TypedArray from a non-conformant polyfill) is
+      // intentionally ignored rather than guessed at.
     });
   }
 
-  /** Send a raw string message. */
-  send(data: string): void {
+  /** Send a control frame (string) or an E2E envelope (bytes). */
+  send(data: string | Uint8Array): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('relayly: WebSocket is not connected');
     }
