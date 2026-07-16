@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - interop: cross-language CI matrix
+
+Closes out the v0.5 "SDK convergence" milestone (`docs/tasks/02-sdks-and-interop.md`):
+a required CI check (`.github/workflows/interop.yml`) that proves the four official
+SDKs actually interoperate with each other and the server, so the kind of drift this
+whole milestone fixed can't silently reappear.
+
+- New `interop/clients/<lang>/` — a small CLI shim per SDK (Go, TypeScript, Python,
+  Rust), each using only that SDK's public API (no test-only hooks), driven by
+  newline-delimited JSON over stdin/stdout.
+- New `interop/harness/` (Go) drives the matrix: builds and starts the real server,
+  launches shim pairs through an in-process WebSocket proxy, and runs the full
+  register/pair/roundtrip/reconnect flow across all 10 SDK pairs (4 self + 6 cross),
+  plus three negative scenarios per SDK (wrong pinned key, server-announced-key
+  rewrite, mid-session rekey safety) each run once in the receiving/victim role. Run
+  locally with `cd interop/harness && go run .`.
+- `internal/relay/ratelimit.go`'s per-IP WebSocket upgrade limit (10/minute) is now
+  overridable via `RELAYLY_WS_RATE_LIMIT_MAX`/`RELAYLY_WS_RATE_LIMIT_WINDOW_SECONDS`
+  (falls back to the existing 10/minute default if unset) — found because the
+  interop harness drives dozens of connections from one IP (127.0.0.1) well within a
+  minute, tripping the limit that was previously untunable.
+
 ## [Unreleased] - sdk/rust: Protocol v1
 
 Part of the v0.5 "SDK convergence" milestone (`docs/tasks/02-sdks-and-interop.md`);

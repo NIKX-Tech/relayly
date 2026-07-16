@@ -33,10 +33,10 @@ relay authenticates devices and mediates pairing, but holds no key material capa
 reading message content, see [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the exact contract.
 
 > **SDK status:** the server and all four official SDKs (`sdk/go`, `sdk/ts`, `sdk/py`,
-> `sdk/rust`) now speak Protocol v1 (`docs/tasks/02-sdks-and-interop.md`). See
+> `sdk/rust`) now speak Protocol v1 and are proven interoperable by a required
+> cross-language CI matrix (`docs/tasks/02-sdks-and-interop.md`). See
 > [RFC-000](docs/rfc/000-protocol-reconciliation.md) for the drift this fixed, and
-> [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next (the cross-language interop CI
-> matrix, then the C++ SDK).
+> [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next (the C++ SDK).
 
 ---
 

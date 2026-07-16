@@ -1,0 +1,49 @@
+name: Interop matrix
+
+on:
+  push:
+    branches: [main, dev]
+    paths: ["sdk/**", "internal/**", "cmd/**", "interop/**", "docs/PROTOCOL.md", "go.mod", "go.sum"]
+  pull_request:
+    branches: [main, dev]
+    paths: ["sdk/**", "internal/**", "cmd/**", "interop/**", "docs/PROTOCOL.md", "go.mod", "go.sum"]
+
+jobs:
+  interop:
+    name: Cross-language interop matrix
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          working-directory: sdk/rust
+
+      - name: Install sdk/py
+        run: pip install -e sdk/py
+
+      - name: Install interop TS shim dependencies
+        working-directory: interop/clients/ts
+        run: npm install
+
+      - name: Run interop matrix
+        working-directory: interop/harness
+        run: go run .

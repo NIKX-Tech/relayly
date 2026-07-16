@@ -4,6 +4,8 @@ package relay
 import (
 	"net"
 	"net/http"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -11,12 +13,12 @@ import (
 // tokenBucket is a simple token-bucket rate limiter for a single IP.
 // It allows up to maxTokens events per window duration.
 type tokenBucket struct {
-	mu         sync.Mutex
-	tokens     int
-	maxTokens  int
-	window     time.Duration
+	mu          sync.Mutex
+	tokens      int
+	maxTokens   int
+	window      time.Duration
 	windowStart time.Time
-	lastSeen   time.Time
+	lastSeen    time.Time
 }
 
 // allow returns true if the request is permitted, false if it should be rate-limited.
@@ -93,8 +95,31 @@ func (rl *IPRateLimiter) cleanupLoop() {
 	}
 }
 
-// defaultLimiter is the package-level rate limiter: 10 upgrade attempts per minute per IP.
-var defaultLimiter = NewIPRateLimiter(10, time.Minute)
+// defaultLimiter is the package-level rate limiter: 10 upgrade attempts per minute per
+// IP by default. Overridable via RELAYLY_WS_RATE_LIMIT_MAX / _WINDOW_SECONDS for
+// scenarios that legitimately need many WebSocket upgrades from one IP in a short
+// window — e.g. the cross-language interop harness (interop/harness/), which drives
+// up to a few dozen SDK client connections against one test server, all from
+// 127.0.0.1. Unset in production; the 10/minute default is unchanged.
+var defaultLimiter = NewIPRateLimiter(envRateLimitMax(), envRateLimitWindow())
+
+func envRateLimitMax() int {
+	if v := os.Getenv("RELAYLY_WS_RATE_LIMIT_MAX"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 10
+}
+
+func envRateLimitWindow() time.Duration {
+	if v := os.Getenv("RELAYLY_WS_RATE_LIMIT_WINDOW_SECONDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	return time.Minute
+}
 
 // RateLimitMiddleware wraps next and rejects requests from IPs that exceed
 // 10 WebSocket upgrade attempts per minute with HTTP 429.
