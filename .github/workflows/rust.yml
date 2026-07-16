@@ -1,0 +1,36 @@
+name: Rust SDK
+
+on:
+  push:
+    branches: [main]
+    paths: ["sdk/rust/**", "cmd/**", "internal/**", "go.mod", "go.sum"]
+  pull_request:
+    branches: [main]
+    paths: ["sdk/rust/**", "cmd/**", "internal/**", "go.mod", "go.sum"]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install stable Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          working-directory: sdk/rust
+
+      - name: Clippy
+        working-directory: sdk/rust
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        working-directory: sdk/rust
+        run: cargo test

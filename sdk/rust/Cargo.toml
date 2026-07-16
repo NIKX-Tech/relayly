@@ -6,7 +6,7 @@ rust-version = "1.75"
 description = "Rust SDK for Relayly - self-hosted end-to-end encrypted WebSocket relay"
 license = "MIT"
 repository = "https://github.com/NIKX-Tech/relayly"
-keywords = ["relay", "websocket", "nacl", "encryption", "local-first"]
+keywords = ["relay", "websocket", "noise-protocol", "encryption", "local-first"]
 categories = ["network-programming", "cryptography", "asynchronous"]
 readme = "README.md"
 
@@ -14,7 +14,8 @@ readme = "README.md"
 tokio = { version = "1", features = ["rt", "sync", "time", "net", "macros"] }
 tokio-tungstenite = { version = "0.23", features = ["native-tls"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
-crypto_box = { version = "0.9", features = ["salsa20"] }
+snow = "0.9"
+x25519-dalek = { version = "2", features = ["static_secrets", "getrandom"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"

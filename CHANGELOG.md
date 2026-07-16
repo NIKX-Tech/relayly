@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - sdk/rust: Protocol v1
+
+Part of the v0.5 "SDK convergence" milestone (`docs/tasks/02-sdks-and-interop.md`);
+this closes it out for the four official SDKs — the cross-language interop CI matrix
+lands separately.
+
+**Breaking (sdk/rust, the `relayly` crate):**
+- Wire protocol rewritten for Protocol v1: `Options` gains a required `device_token`;
+  `connect()` authenticates via query params (no more in-band JSON auth frame);
+  encryption is device-to-device Noise XX (`Noise_XX_25519_ChaChaPoly_BLAKE2s`)
+  instead of per-message NaCl box. Replaces the `crypto_box` dependency with `snow`
+  (over `x25519-dalek` for key management) — `snow` is actively maintained and
+  supports this exact suite by name; verified byte-for-byte against `flynn/noise` (see
+  sdk/rust/README.md's "Why snow?").
+- `PrivateKey::encrypt`/`decrypt` are removed (encryption is now a stateful Noise
+  session, not a per-message call).
+- New peer key pinning (`docs/PROTOCOL.md` §7.1): `Options.peer_store_path` (defaults
+  to `~/.relayly/peers.json`, the same schema shared with every other official SDK). A
+  peer presenting a different key than its pin fails with the new
+  `Error::PeerKeyMismatch`.
+- `send()` returns the new `Error::NotReady` if a peer's Noise session isn't up yet
+  (only expected right after a reconnect forces a re-handshake); `request_pair_code()`/
+  `accept_pair()`/`PairCode::wait()` block until the handshake actually completes, so
+  the existing pairing flow is otherwise unchanged.
+- New `Options.on_ready` and `Options.on_peer_status` callbacks.
+- `Message.timestamp` is now local receipt time, not server-assigned (the new binary
+  E2E envelope carries no timestamp field), matching the other three SDKs.
+- New `.github/workflows/rust.yml` runs `cargo test` and `cargo clippy -D warnings`
+  (including a self-pair integration test against the real compiled server) — sdk/rust
+  had no CI test job before this.
+
 ## [Unreleased] - sdk/py: Protocol v1
 
 Part of the v0.5 "SDK convergence" milestone (`docs/tasks/02-sdks-and-interop.md`);

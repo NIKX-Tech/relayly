@@ -1,5 +1,4 @@
 use relayly::{generate_key, load_key_from_file, load_or_generate_key, PrivateKey, PublicKey};
-use std::path::Path;
 use tempfile::TempDir;
 
 #[test]
@@ -7,6 +6,12 @@ fn generate_key_returns_different_keys() {
     let k1 = generate_key();
     let k2 = generate_key();
     assert_ne!(k1.to_base64(), k2.to_base64());
+}
+
+#[test]
+fn generated_key_is_32_bytes() {
+    let key = generate_key();
+    assert_eq!(key.to_bytes().len(), 32);
 }
 
 #[test]
@@ -31,36 +36,14 @@ fn private_key_base64_roundtrip() {
     let b64 = key.to_base64();
     let restored = PrivateKey::from_base64(&b64).unwrap();
     assert_eq!(key.to_base64(), restored.to_base64());
+    assert_eq!(key.to_bytes(), restored.to_bytes());
 }
 
 #[test]
-fn encrypt_decrypt_roundtrip() {
-    let alice = generate_key();
-    let bob = generate_key();
-
-    let plaintext = b"hello from alice";
-    let (ct, nonce) = alice.encrypt(plaintext, &bob.public_key()).unwrap();
-    let recovered = bob.decrypt(&ct, &nonce, &alice.public_key()).unwrap();
-    assert_eq!(recovered, plaintext);
-}
-
-#[test]
-fn decrypt_wrong_key_fails() {
-    let alice = generate_key();
-    let bob = generate_key();
-    let eve = generate_key();
-
-    let (ct, nonce) = alice.encrypt(b"secret", &bob.public_key()).unwrap();
-    assert!(eve.decrypt(&ct, &nonce, &alice.public_key()).is_err());
-}
-
-#[test]
-fn encrypt_produces_different_nonces() {
-    let alice = generate_key();
-    let bob = generate_key();
-    let (_, n1) = alice.encrypt(b"msg", &bob.public_key()).unwrap();
-    let (_, n2) = alice.encrypt(b"msg", &bob.public_key()).unwrap();
-    assert_ne!(n1, n2);
+fn private_key_from_bytes_derives_same_public_key() {
+    let key = generate_key();
+    let restored = PrivateKey::from_base64(&key.to_base64()).unwrap();
+    assert_eq!(key.public_key().to_base64(), restored.public_key().to_base64());
 }
 
 #[test]
@@ -73,6 +56,19 @@ fn save_and_load_key_file() {
 
     let loaded = load_key_from_file(&path).unwrap();
     assert_eq!(original.to_base64(), loaded.to_base64());
+}
+
+#[cfg(unix)]
+#[test]
+fn save_to_file_sets_restrictive_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("device.key");
+    generate_key().save_to_file(&path).unwrap();
+
+    let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
 }
 
 #[test]
