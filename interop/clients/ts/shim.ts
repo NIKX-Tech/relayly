@@ -5,7 +5,16 @@
  * public API alone is enough for interop testing. Protocol matches
  * interop/clients/go/main.go exactly (see its doc comment for the full command/event
  * list).
+ *
+ * Node has no global WebSocket on the Node 18/20 CI matrix (only 22+), so this
+ * polyfills globalThis.WebSocket with the `ws` package before importing relayly —
+ * same fix, same reason, as sdk/ts/src/client.test.ts's self-pair integration test.
  */
+import { WebSocket as NodeWebSocket } from 'ws';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).WebSocket = NodeWebSocket;
+
 import * as readline from 'node:readline';
 import { RelaylyClient, generateKey, encodeBase64, decodeBase64 } from 'relayly';
 import { FilePeerKeyStore } from 'relayly/node';
