@@ -32,12 +32,11 @@ desktop, etc.) through a server you control. Encryption runs device-to-device us
 relay authenticates devices and mediates pairing, but holds no key material capable of
 reading message content, see [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the exact contract.
 
-> **SDK status:** the server implements Protocol v1 as of `docs/tasks/01-server.md`.
-> The official SDKs (`sdk/go`, `sdk/ts`, `sdk/py`, `sdk/rust`) do not yet, they still
-> speak the pre-v1 wire format and cannot connect to this server until
-> `docs/tasks/02-sdks-and-interop.md` lands. See
-> [RFC-000](docs/rfc/000-protocol-reconciliation.md) for why, and
-> [`docs/ROADMAP.md`](docs/ROADMAP.md) for where that work stands.
+> **SDK status:** the server and all four official SDKs (`sdk/go`, `sdk/ts`, `sdk/py`,
+> `sdk/rust`) now speak Protocol v1 (`docs/tasks/02-sdks-and-interop.md`). See
+> [RFC-000](docs/rfc/000-protocol-reconciliation.md) for the drift this fixed, and
+> [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next (the cross-language interop CI
+> matrix, then the C++ SDK).
 
 ---
 
@@ -288,8 +287,10 @@ use std::path::Path;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = load_or_generate_key(Path::new("~/.relayly/device.key"))?;
-    let (client, mut messages) = connect("wss://your-server", Options {
+    // device_token comes from POST /api/v1/devices
+    let (client, mut messages) = connect("wss://your-server/ws", Options {
         device_id: "my-laptop".into(),
+        device_token,
         private_key: key,
         ..Default::default()
     }).await?;
