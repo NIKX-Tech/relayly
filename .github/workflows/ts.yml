@@ -2,10 +2,10 @@ name: TypeScript SDK
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     paths: ["sdk/ts/**"]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     paths: ["sdk/ts/**"]
 
 jobs:

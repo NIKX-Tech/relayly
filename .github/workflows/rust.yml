@@ -2,10 +2,10 @@ name: Rust SDK
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     paths: ["sdk/rust/**", "cmd/**", "internal/**", "go.mod", "go.sum"]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     paths: ["sdk/rust/**", "cmd/**", "internal/**", "go.mod", "go.sum"]
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          working-directory: sdk/rust
+          cache-workspaces: sdk/rust
 
       - name: Clippy
         working-directory: sdk/rust

@@ -35,10 +35,16 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          working-directory: sdk/rust
+          cache-workspaces: |
+            sdk/rust
+            interop/clients/rust
 
       - name: Install sdk/py
         run: pip install -e sdk/py
+
+      - name: Build sdk/ts
+        working-directory: sdk/ts
+        run: npm install && npm run build
 
       - name: Install interop TS shim dependencies
         working-directory: interop/clients/ts
