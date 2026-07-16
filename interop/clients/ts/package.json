@@ -1,0 +1,17 @@
+{
+  "name": "interop-shim-ts",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "shim": "tsx shim.ts"
+  },
+  "dependencies": {
+    "relayly": "file:../../../sdk/ts",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.0"
+  }
+}

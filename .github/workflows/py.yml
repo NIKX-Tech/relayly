@@ -2,10 +2,10 @@ name: Python SDK
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     paths: ["sdk/py/**", "cmd/**", "internal/**", "go.mod", "go.sum"]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     paths: ["sdk/py/**", "cmd/**", "internal/**", "go.mod", "go.sum"]
 
 jobs:
