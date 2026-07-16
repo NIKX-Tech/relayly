@@ -253,10 +253,18 @@ import asyncio, relayly
 
 async def main():
     key = relayly.load_or_generate_key("~/.relayly/device.key")
-    client = await relayly.connect("wss://your-server", relayly.Options(
+    # device_token comes from POST /api/v1/devices
+    client = await relayly.connect("wss://your-server/ws", relayly.Options(
         device_id="my-laptop",
+        device_token=device_token,
         private_key=key,
     ))
+
+    code = await client.request_pair_code()
+    print("Code:", code.short)
+
+    peer = await client.accept_pair("483921")
+    await client.send(peer.id, b"hello!")
     async for msg in client.messages():
         print(msg.payload.decode())
 

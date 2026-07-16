@@ -5,13 +5,35 @@ import base64
 import dataclasses
 import json
 from datetime import datetime
-from typing import AsyncGenerator, Callable
-from urllib.parse import urlparse, urlunparse, urlencode, parse_qsl
+from typing import Any, Callable
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import websockets
 import websockets.exceptions
 
-from ._crypto import PrivateKey, PublicKey
+from ._crypto import PrivateKey
+from ._errors import RelaylyError, error_for_code
+from ._noise import ENVELOPE_HANDSHAKE, ENVELOPE_TRANSPORT, NoiseSession, decode_envelope, encode_envelope
+from ._peer import PeerConn
+from ._peerstore import DEFAULT_PEER_STORE_PATH, PeerKeyMismatchError, PeerStore
+
+PROTOCOL_VERSION = 1
+
+MSG_WELCOME = "welcome"
+MSG_ANNOUNCE_KEY = "announce_key"
+MSG_PAIR_REQUEST = "pair_request"
+MSG_PAIR_CODE = "pair_code"
+MSG_PAIR_ACCEPT = "pair_accept"
+MSG_PAIR_COMPLETE = "pair_complete"
+MSG_PEER_STATUS = "peer_status"
+MSG_PING = "ping"
+MSG_PONG = "pong"
+MSG_ERROR = "error"
+
+# Throttles how often this client re-initiates a rekey after a reconnect notices the
+# peer is (still) online — mirrors the request-side rate limiting sdk/go/sdk/ts apply
+# on the responder side; here it just prevents redundant sends if peer_status fires
+# more than once in quick succession.
 
 
 # ---------------------------------------------------------------------------
@@ -44,17 +66,27 @@ class Options:
 
         opts = Options(
             device_id="my-laptop",
+            device_token=token,  # from POST /api/v1/devices
             private_key=generate_key(),
         )
     """
 
     device_id: str
+    device_token: str
     private_key: PrivateKey
+    peer_store_path: str = DEFAULT_PEER_STORE_PATH
     ping_interval: float = 30.0
-    reconnect_delay: float = 1.0   # seconds; set to -1 to disable
+    reconnect_delay: float = 1.0  # seconds; set to -1 to disable
     max_reconnect_delay: float = 60.0
     on_reconnect: Callable[[], None] | None = None
     on_disconnect: Callable[[Exception], None] | None = None
+    # Called whenever a peer's Noise session becomes usable for send() — both after
+    # the very first pairing and after any later re-handshake following a reconnect
+    # (docs/PROTOCOL.md §6). request_pair_code()/accept_pair() already block until the
+    # first handshake completes, so this is mainly useful for noticing recovery.
+    on_ready: Callable[[str], None] | None = None
+    # Called whenever the server reports the paired peer's online/offline transition.
+    on_peer_status: Callable[[str, bool], None] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +101,18 @@ class _PairResult:
     peer_id: str = ""
     peer_public_key: bytes = dataclasses.field(default_factory=bytes)
     error: Exception | None = None
+
+
+@dataclasses.dataclass
+class _PairWaiter:
+    """What a pending request_pair_code/accept_pair call is waiting on. Both sides of
+    a pairing register a waiter under the same code — we_are_acceptor is what lets
+    _handle_pair_complete tell them apart (docs/PROTOCOL.md §5.3: only the accepting
+    device initiates the Noise handshake). Without this distinction both sides would
+    call start_as_initiator() and send competing msg1s."""
+
+    future: asyncio.Future
+    we_are_acceptor: bool = False
 
 
 class PairCode:
@@ -87,7 +131,8 @@ class PairCode:
         return urlunparse(parsed._replace(path="/pair", query=query))
 
     async def wait(self) -> Peer:
-        """Block until the other device accepts the pairing."""
+        """Block until the other device accepts the pairing (including the resulting
+        Noise handshake completing)."""
         result = await self._future
         if result.error:
             raise result.error
@@ -109,10 +154,11 @@ class Client:
         self._closed = False
         self._stop: asyncio.Event = asyncio.Event()
 
-        self._peers: dict[str, Peer] = {}
+        self._peer_store = PeerStore.load(opts.peer_store_path)
+        self._peers: dict[str, PeerConn] = {}
         self._message_queue: asyncio.Queue[Message | None] = asyncio.Queue(maxsize=64)
-        self._send_queue: asyncio.Queue[dict | None] = asyncio.Queue(maxsize=64)
-        self._pair_waiters: dict[str, asyncio.Future[_PairResult]] = {}
+        self._send_queue: asyncio.Queue[str | bytes | None] = asyncio.Queue(maxsize=64)
+        self._pair_waiters: dict[str, _PairWaiter] = {}
 
         self._tasks: list[asyncio.Task] = []
 
@@ -124,18 +170,17 @@ class Client:
         ]
 
     async def send(self, peer_id: str, payload: bytes) -> None:
-        """Encrypt and send a message to a paired peer device."""
+        """Encrypt and send a message to a paired peer device.
+
+        Raises NotReadyError if the peer's Noise session isn't up yet — only expected
+        in the brief window after a reconnect forces a re-handshake.
+        """
         peer = self._peers.get(peer_id)
         if peer is None:
             raise ValueError(f"relayly: no paired peer '{peer_id}' — pair first")
 
-        ciphertext, nonce = self._opts.private_key.encrypt(payload, PublicKey(peer.public_key))
-        await self._enqueue({
-            "type": "send",
-            "to": peer_id,
-            "payload": base64.b64encode(ciphertext).decode(),
-            "nonce": base64.b64encode(nonce).decode(),
-        })
+        ciphertext = peer.send(payload)  # raises NotReadyError if not ready
+        await self._enqueue(encode_envelope(ENVELOPE_TRANSPORT, ciphertext))
 
     async def request_pair_code(self) -> PairCode:
         """Ask the server for a 6-digit pairing code to share with another device."""
@@ -143,38 +188,40 @@ class Client:
 
         # Register waiter before enqueuing — avoids missing a fast server response.
         req_future: asyncio.Future[_PairResult] = loop.create_future()
-        self._pair_waiters["__request__"] = req_future
-        await self._enqueue({"type": "pair_request"})
+        self._pair_waiters["__request__"] = _PairWaiter(req_future)
+        await self._enqueue_control({"type": MSG_PAIR_REQUEST})
 
         try:
             result = await asyncio.wait_for(req_future, timeout=10.0)
         except asyncio.TimeoutError:
             self._pair_waiters.pop("__request__", None)
-            raise TimeoutError("relayly: timed out waiting for pair code from server")
+            raise TimeoutError("relayly: timed out waiting for pair code from server") from None
         if result.error:
             raise result.error
 
         complete_future: asyncio.Future[_PairResult] = loop.create_future()
-        self._pair_waiters[result.code] = complete_future
+        self._pair_waiters[result.code] = _PairWaiter(complete_future, we_are_acceptor=False)
         return PairCode(short=result.code, expires_in=result.expires_in, client=self, future=complete_future)
 
     async def accept_pair(self, code: str) -> Peer:
-        """Accept a pairing code from another device."""
+        """Accept a pairing code from another device. Blocks until the resulting Noise
+        handshake completes (docs/PROTOCOL.md §5.3: the accepting device is the
+        initiator), so the returned Peer can be sent to immediately."""
         loop = asyncio.get_running_loop()
         future: asyncio.Future[_PairResult] = loop.create_future()
-        self._pair_waiters[code] = future
-        await self._enqueue({"type": "pair_accept", "code": code})
+        self._pair_waiters[code] = _PairWaiter(future, we_are_acceptor=True)
+        await self._enqueue_control({"type": MSG_PAIR_ACCEPT, "code": code})
 
         try:
             result = await asyncio.wait_for(future, timeout=10.0)
         except asyncio.TimeoutError:
             self._pair_waiters.pop(code, None)
-            raise TimeoutError("relayly: timed out waiting for pair completion")
+            raise TimeoutError("relayly: timed out waiting for pair completion") from None
         if result.error:
             raise result.error
         return Peer(id=result.peer_id, public_key=result.peer_public_key)
 
-    async def messages(self) -> AsyncGenerator[Message, None]:
+    async def messages(self):
         """Async generator that yields decrypted messages from paired peers.
 
         The generator ends when the client is closed::
@@ -201,18 +248,16 @@ class Client:
             except Exception:
                 pass
 
-        # Unblock write loop sentinel
-        await self._send_queue.put(None)
+        await self._send_queue.put(None)  # unblock write loop sentinel
 
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
 
-        # Drain any pending pair waiters
-        for fut in self._pair_waiters.values():
-            if not fut.done():
-                fut.set_exception(Exception("relayly: client closed"))
+        for waiter in self._pair_waiters.values():
+            if not waiter.future.done():
+                waiter.future.set_exception(Exception("relayly: client closed"))
         self._pair_waiters.clear()
 
     # ------------------------------------------------------------------
@@ -224,20 +269,40 @@ class Client:
             while True:
                 ws = self._ws
                 assert ws is not None
+                # websockets' `async for` ends the iteration silently (no exception)
+                # on a clean close (ConnectionClosedOK) and only raises on a protocol
+                # error. Both cases mean the connection is gone, so both must be
+                # handled the same way below — falling through to a bare `continue`
+                # here would re-enter `async for` on the same now-closed socket, which
+                # also ends instantly, spinning the loop at 100% CPU and starving the
+                # event loop (this was a real hang, caught by the self-pair
+                # integration test never returning from close()).
+                exc: Exception | None = None
                 try:
                     async for raw in ws:
-                        try:
-                            frame = json.loads(raw)
-                        except Exception:
-                            continue
-                        self._dispatch(frame)
-                except Exception as exc:
-                    if self._closed:
-                        return
-                    if not await self._reconnect_with_backoff(exc):
-                        return
+                        if isinstance(raw, bytes):
+                            self._handle_binary_frame(raw)
+                        else:
+                            self._handle_control_message(raw)
+                except Exception as caught:
+                    exc = caught
+
+                if self._closed:
+                    return
+                if not await self._reconnect_with_backoff(exc or ConnectionError("relayly: connection closed")):
+                    return
         finally:
             await self._message_queue.put(None)  # signal messages() to stop
+
+    def _handle_binary_frame(self, raw: bytes) -> None:
+        decoded = decode_envelope(raw)
+        if decoded is None:
+            return
+        kind, payload = decoded
+        if kind == ENVELOPE_HANDSHAKE:
+            self._handle_handshake_envelope(payload)
+        elif kind == ENVELOPE_TRANSPORT:
+            self._handle_transport_envelope(payload)
 
     async def _write_loop(self) -> None:
         while True:
@@ -248,7 +313,7 @@ class Client:
             if ws is None:
                 continue
             try:
-                await ws.send(json.dumps(msg))
+                await ws.send(msg)
             except Exception:
                 pass  # drop; _read_loop handles reconnect
 
@@ -262,7 +327,7 @@ class Client:
                 pass
             if self._closed:
                 return
-            await self._enqueue({"type": "ping"})
+            await self._enqueue_control({"type": MSG_PING})
 
     # ------------------------------------------------------------------
     # Reconnect
@@ -303,97 +368,243 @@ class Client:
                 delay = min(delay * 2, max_delay)
 
     # ------------------------------------------------------------------
-    # Helpers
+    # Connect / dial
     # ------------------------------------------------------------------
 
     async def _dial(self) -> None:
-        ws = await websockets.connect(self._server_url, open_timeout=10)
+        parsed = urlparse(self._server_url)
+        query = dict(parse_qsl(parsed.query))
+        query["device_id"] = self._opts.device_id
+        query["token"] = self._opts.device_token
+        url = urlunparse(parsed._replace(query=urlencode(query)))
+
+        ws = await websockets.connect(url, open_timeout=10)
         self._ws = ws
 
-        pub_b64 = self._opts.private_key.public_key.to_base64()
-        await ws.send(json.dumps({
-            "type": "auth",
-            "device_id": self._opts.device_id,
-            "public_key": pub_b64,
-        }))
-
         raw = await asyncio.wait_for(ws.recv(), timeout=10.0)
-        resp = json.loads(raw)
+        if isinstance(raw, bytes):
+            await ws.close()
+            raise ConnectionError("relayly: expected a text welcome frame")
+        frame = _json_loads(raw)
+        if frame is None:
+            await ws.close()
+            raise ConnectionError("relayly: invalid welcome frame")
 
-        if resp.get("type") == "error":
+        if frame.get("type") == MSG_ERROR:
+            await ws.close()
+            raise error_for_code(frame.get("code", ""), frame.get("message", ""))
+        if frame.get("type") != MSG_WELCOME:
+            await ws.close()
+            raise ConnectionError(f"relayly: unexpected first frame type: {frame.get('type')}")
+        if frame.get("protocol_version") != PROTOCOL_VERSION:
             await ws.close()
             raise ConnectionError(
-                f"relayly: authentication failed: {resp.get('message')} ({resp.get('code')})"
-            )
-        if resp.get("type") != "auth_ok":
-            await ws.close()
-            raise ConnectionError(
-                f"relayly: unexpected auth response: {resp.get('type')}"
+                f"relayly: unsupported protocol_version {frame.get('protocol_version')} "
+                f"(this SDK implements {PROTOCOL_VERSION})"
             )
 
-    def _dispatch(self, frame: dict) -> None:
+        # A reconnect must not discard an already-healthy PeerConn just because the
+        # control channel briefly reset — only register peers we don't already track.
+        for p in frame.get("peers") or []:
+            if p.get("id") and p["id"] not in self._peers:
+                self._peers[p["id"]] = PeerConn(p["id"], p.get("static_key", ""))
+
+        pub_b64 = self._opts.private_key.public_key.to_base64()
+        await ws.send(_json_dumps({"type": MSG_ANNOUNCE_KEY, "static_key": pub_b64}))
+
+    # ------------------------------------------------------------------
+    # Control dispatch
+    # ------------------------------------------------------------------
+
+    def _handle_control_message(self, raw: str) -> None:
+        frame = _json_loads(raw)
+        if frame is None:
+            return  # skip malformed frames
+
         t = frame.get("type", "")
+        if t == MSG_PAIR_CODE:
+            self._handle_pair_code(frame)
+        elif t == MSG_PAIR_COMPLETE:
+            self._handle_pair_complete(frame)
+        elif t == MSG_PEER_STATUS:
+            self._handle_peer_status(frame)
+        elif t == MSG_ERROR:
+            self._handle_error(frame)
+        elif t == MSG_PONG:
+            pass  # keepalive, nothing to do
+        # unknown type: ignored per §5's forward-compatibility rule
 
-        if t == "message":
-            self._handle_message(frame)
+    def _handle_pair_code(self, frame: dict[str, Any]) -> None:
+        waiter = self._pair_waiters.pop("__request__", None)
+        if waiter is not None and not waiter.future.done():
+            waiter.future.set_result(_PairResult(code=frame.get("code", ""), expires_in=frame.get("expires_in", 0)))
 
-        elif t == "pair_code":
-            fut = self._pair_waiters.pop("__request__", None)
-            if fut is not None and not fut.done():
-                fut.set_result(_PairResult(
-                    code=frame.get("code", ""),
-                    expires_in=frame.get("expires_in", 0),
-                ))
+    def _handle_pair_complete(self, frame: dict[str, Any]) -> None:
+        """Implements §5.3: link the peer, and if we're the accepting device, start
+        the Noise handshake as initiator immediately."""
+        peer_id = frame.get("peer_id")
+        if not peer_id:
+            return
 
-        elif t == "pair_complete":
-            raw_pub = frame.get("peer_public_key", "")
+        code = frame.get("code", "")
+        waiter = self._pair_waiters.pop(code, None) if code else None
+
+        peer = self._peers.get(peer_id)
+        if peer is None:
+            peer = PeerConn(peer_id, frame.get("peer_static_key", ""))
+            self._peers[peer_id] = peer
+        else:
+            peer.announced_static_key = frame.get("peer_static_key", "")
+
+        if waiter is None:
+            return  # neither request_pair_code nor accept_pair is waiting on this code
+
+        peer.set_first_pair_waiter(waiter.future)
+        if not waiter.we_are_acceptor:
+            return  # we requested; wait for the accepting device's incoming msg1
+
+        try:
+            msg1 = peer.start_as_initiator(self._opts.private_key)
+        except Exception as exc:
+            first_waiter = peer.take_first_pair_waiter()
+            if first_waiter is not None and not first_waiter.done():
+                first_waiter.set_result(_PairResult(error=exc))
+            return
+        self._enqueue_nowait(encode_envelope(ENVELOPE_HANDSHAKE, msg1))
+
+    def _handle_peer_status(self, frame: dict[str, Any]) -> None:
+        """Implements §6's reconnect rule: whichever side's device_id is
+        lexicographically smaller re-initiates a fresh handshake whenever the peer
+        comes online."""
+        online = frame.get("online") is True
+        peer_id = frame.get("peer_id")
+        if peer_id and self._opts.on_peer_status is not None:
             try:
-                pub_bytes = base64.b64decode(raw_pub)
+                self._opts.on_peer_status(peer_id, online)
             except Exception:
-                return
-            peer = Peer(id=frame.get("peer_id", ""), public_key=pub_bytes)
-            self._peers[peer.id] = peer
-            code = frame.get("code", "")
-            fut = self._pair_waiters.pop(code, None)
-            if fut is not None and not fut.done():
-                fut.set_result(_PairResult(peer_id=peer.id, peer_public_key=pub_bytes))
+                pass
+        if not online or not peer_id:
+            return
 
-        elif t == "error":
-            exc = Exception(f"{frame.get('code', 'error')}: {frame.get('message', '')}")
-            for fut in list(self._pair_waiters.values()):
-                if not fut.done():
-                    fut.set_exception(exc)
-            self._pair_waiters.clear()
-
-    def _handle_message(self, frame: dict) -> None:
-        sender_id = frame.get("from", "")
-        peer = self._peers.get(sender_id)
+        peer = self._peers.get(peer_id)
         if peer is None:
             return
+        if self._opts.device_id >= peer_id:
+            return  # larger ID: wait for the incoming msg1
+
         try:
-            ciphertext = base64.b64decode(frame["payload"])
-            nonce = base64.b64decode(frame["nonce"])
-            plaintext = self._opts.private_key.decrypt(ciphertext, nonce, PublicKey(peer.public_key))
+            msg1 = peer.start_rekey_as_initiator(self._opts.private_key)
         except Exception:
+            return  # best-effort; a future peer_status or AEAD failure can retry
+        self._enqueue_nowait(encode_envelope(ENVELOPE_HANDSHAKE, msg1))
+
+    def _handle_error(self, frame: dict[str, Any]) -> None:
+        exc = error_for_code(frame.get("code", ""), frame.get("message", ""))
+        for waiter in list(self._pair_waiters.values()):
+            if not waiter.future.done():
+                waiter.future.set_result(_PairResult(error=exc))
+        self._pair_waiters.clear()
+
+    # ------------------------------------------------------------------
+    # Binary envelope dispatch
+    # ------------------------------------------------------------------
+
+    def _get_sole_peer(self) -> PeerConn | None:
+        """v1 supports exactly one linked peer per device (docs/PROTOCOL.md §5.3).
+        Incoming binary envelopes carry no sender field — the relay only ever forwards
+        them from the paired device."""
+        return next(iter(self._peers.values()), None)
+
+    def _handle_handshake_envelope(self, payload: bytes) -> None:
+        peer = self._get_sole_peer()
+        if peer is None:
             return
 
-        ts_str = frame.get("timestamp")
-        ts: datetime | None = None
-        if ts_str:
+        reply, completed, was_pending = peer.handle_handshake_envelope(self._opts.private_key, payload)
+        if reply is not None:
+            self._enqueue_nowait(encode_envelope(ENVELOPE_HANDSHAKE, reply))
+        if completed is not None:
+            self._resolve_handshake(peer, completed, was_pending)
+
+    def _resolve_handshake(self, peer: PeerConn, session: NoiseSession, was_pending: bool) -> None:
+        """Runs once, exactly when a Noise handshake attempt finishes: applies §7's
+        client-side pin (the real boundary) and server-announced-key cross-check,
+        promotes or abandons a rekey attempt per §6's make-before-break rule, notifies
+        a first-pairing waiter if one is registered, and calls on_ready."""
+        error: Exception | None = None
+        public_key: bytes | None = None
+
+        if session.failed:
+            error = RelaylyError(f"relayly: handshake with {peer.id} failed")
+        else:
+            authenticated = session.peer_static_key
+            authenticated_b64 = base64.b64encode(authenticated).decode()
             try:
-                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                self._peer_store.pin_or_verify(peer.id, authenticated_b64)
+                if peer.announced_static_key and peer.announced_static_key != authenticated_b64:
+                    error = error_for_code(
+                        "key_mismatch",
+                        f"server-announced key for peer {peer.id} does not match the authenticated handshake",
+                    )
+                else:
+                    public_key = authenticated
+            except PeerKeyMismatchError as exc:
+                error = exc
+
+        if was_pending:
+            if error is not None:
+                peer.abandon(session)  # existing active session, if any, is untouched
+                return
+            peer.promote(session)
+
+        waiter = peer.take_first_pair_waiter()
+        if error is not None:
+            if waiter is not None and not waiter.done():
+                waiter.set_result(_PairResult(error=error))
+            return
+
+        if waiter is not None and not waiter.done():
+            waiter.set_result(_PairResult(peer_id=peer.id, peer_public_key=public_key or b""))
+        if self._opts.on_ready is not None:
+            try:
+                self._opts.on_ready(peer.id)
             except Exception:
                 pass
 
+    def _handle_transport_envelope(self, ciphertext: bytes) -> None:
+        peer = self._get_sole_peer()
+        if peer is None:
+            return
+
         try:
-            self._message_queue.put_nowait(Message(from_device=sender_id, payload=plaintext, timestamp=ts))
+            plaintext = peer.recv(ciphertext)
+        except Exception:
+            return  # not ready, or decryption failed — drop silently
+
+        try:
+            self._message_queue.put_nowait(
+                Message(from_device=peer.id, payload=plaintext, timestamp=datetime.now())
+            )
         except asyncio.QueueFull:
             pass  # drop; caller should consume promptly
 
-    async def _enqueue(self, msg: dict) -> None:
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    async def _enqueue(self, msg: str | bytes) -> None:
         if self._closed:
             raise RuntimeError("relayly: client is closed")
         await self._send_queue.put(msg)
+
+    async def _enqueue_control(self, msg: dict[str, Any]) -> None:
+        await self._enqueue(_json_dumps(msg))
+
+    def _enqueue_nowait(self, msg: str | bytes) -> None:
+        try:
+            self._send_queue.put_nowait(msg)
+        except asyncio.QueueFull:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -409,6 +620,7 @@ async def connect(server_url: str, opts: Options) -> Client:
         key = load_or_generate_key("~/.relayly/device.key")
         client = await connect("wss://relay.example.com", Options(
             device_id="my-laptop",
+            device_token=token,  # from POST /api/v1/devices
             private_key=key,
         ))
         async for msg in client.messages():
@@ -416,6 +628,8 @@ async def connect(server_url: str, opts: Options) -> Client:
     """
     if not opts.device_id:
         raise ValueError("relayly: Options.device_id is required")
+    if not opts.device_token:
+        raise ValueError("relayly: Options.device_token is required")
 
     client = Client(server_url, opts)
     await client._dial()
@@ -430,3 +644,14 @@ def _normalise_ws_url(url: str) -> str:
     elif parsed.scheme == "https":
         parsed = parsed._replace(scheme="wss")
     return urlunparse(parsed)
+
+
+def _json_dumps(obj: dict[str, Any]) -> str:
+    return json.dumps(obj)
+
+
+def _json_loads(raw: str) -> dict[str, Any] | None:
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None

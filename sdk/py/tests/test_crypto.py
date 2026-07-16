@@ -1,4 +1,4 @@
-"""Tests for the crypto layer — key generation, encrypt/decrypt round-trips."""
+"""Tests for the crypto layer — X25519 key generation, encoding, file persistence."""
 import base64
 import tempfile
 from pathlib import Path
@@ -21,6 +21,11 @@ def test_generate_key_returns_different_keys():
     assert k1.to_bytes() != k2.to_bytes()
 
 
+def test_generated_key_is_32_bytes():
+    key = generate_key()
+    assert len(key.to_bytes()) == 32
+
+
 def test_public_key_derived_from_private():
     key = generate_key()
     pub = key.public_key
@@ -39,36 +44,17 @@ def test_private_key_base64_roundtrip():
     b64 = key.to_base64()
     raw = base64.b64decode(b64)
     assert len(raw) == 32
+    assert raw == key.to_bytes()
 
 
-def test_encrypt_decrypt_roundtrip():
-    alice = generate_key()
-    bob = generate_key()
+def test_private_key_from_bytes_roundtrip():
+    from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
-    plaintext = b"hello from alice"
-    ciphertext, nonce = alice.encrypt(plaintext, bob.public_key)
-
-    recovered = bob.decrypt(ciphertext, nonce, alice.public_key)
-    assert recovered == plaintext
-
-
-def test_decrypt_wrong_key_raises():
-    alice = generate_key()
-    bob = generate_key()
-    eve = generate_key()
-
-    ciphertext, nonce = alice.encrypt(b"secret", bob.public_key)
-
-    with pytest.raises(Exception):
-        eve.decrypt(ciphertext, nonce, alice.public_key)
-
-
-def test_encrypt_produces_different_nonces():
-    alice = generate_key()
-    bob = generate_key()
-    _, n1 = alice.encrypt(b"msg", bob.public_key)
-    _, n2 = alice.encrypt(b"msg", bob.public_key)
-    assert n1 != n2
+    key = generate_key()
+    raw = key.to_bytes()
+    restored = PrivateKey(X25519PrivateKey.from_private_bytes(raw))
+    assert restored.to_bytes() == raw
+    assert restored.public_key.to_base64() == key.public_key.to_base64()
 
 
 def test_save_and_load_key_file():
@@ -79,6 +65,13 @@ def test_save_and_load_key_file():
 
         loaded = load_key_from_file(path)
         assert loaded.to_bytes() == original.to_bytes()
+
+
+def test_save_to_file_sets_restrictive_permissions():
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "device.key"
+        generate_key().save_to_file(path)
+        assert (path.stat().st_mode & 0o777) == 0o600
 
 
 def test_load_or_generate_creates_on_missing():
@@ -103,3 +96,6 @@ def test_relayly_module_exports():
     assert hasattr(relayly, "Options")
     assert hasattr(relayly, "generate_key")
     assert hasattr(relayly, "Client")
+    assert hasattr(relayly, "PeerStore")
+    assert hasattr(relayly, "NotReadyError")
+    assert hasattr(relayly, "PeerKeyMismatchError")

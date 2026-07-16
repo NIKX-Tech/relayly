@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - sdk/py: Protocol v1
+
+Part of the v0.5 "SDK convergence" milestone (`docs/tasks/02-sdks-and-interop.md`);
+`sdk/rust` and the cross-language interop CI matrix land separately, each as its own
+PR/entry.
+
+**Breaking (sdk/py, the `relayly` PyPI package):**
+- Wire protocol rewritten for Protocol v1: `Options` gains a required `device_token`;
+  `connect()` authenticates via query params (no more in-band JSON auth frame);
+  encryption is device-to-device Noise XX (`Noise_XX_25519_ChaChaPoly_BLAKE2s`) instead
+  of per-message NaCl box. Replaces the `PyNaCl` dependency with `noiseprotocol` (over
+  `cryptography`'s X25519/ChaCha20-Poly1305) — the only Python Noise library matching
+  this exact suite; verified byte-for-byte against `flynn/noise` (see sdk/py/README.md's
+  "Why noiseprotocol?").
+- `_crypto.py`'s `PrivateKey.encrypt`/`decrypt` are removed (encryption is now a
+  stateful Noise session, not a per-message call).
+- New peer key pinning (`docs/PROTOCOL.md` §7.1): `Options.peer_store_path` (defaults
+  to `~/.relayly/peers.json`, the same schema shared with every other official SDK). A
+  peer presenting a different key than its pin raises the new `PeerKeyMismatchError`.
+- `send()` raises the new `NotReadyError` if a peer's Noise session isn't up yet (only
+  expected right after a reconnect forces a re-handshake); `request_pair_code()`/
+  `accept_pair()`/`PairCode.wait()` block until the handshake actually completes, so
+  the existing pairing flow is otherwise unchanged.
+- New `Options.on_ready` and `Options.on_peer_status` callbacks.
+- `Message.timestamp` is now local receipt time, not server-assigned (the new binary
+  E2E envelope carries no timestamp field).
+- New `.github/workflows/py.yml` runs the test suite (including a self-pair
+  integration test against the real compiled server) on Python 3.11/3.12/3.13 — sdk/py
+  had no CI test job before this.
+
 ## [Unreleased] - fix: WebSocket ping/deadline config decoded as nanoseconds
 
 `config/relayly.yaml` shipped `websocket.ping_interval`/`websocket.deadline` as bare

@@ -3,8 +3,13 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 
-import nacl.public
-import nacl.utils
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+    PublicFormat,
+)
 
 
 class PublicKey:
@@ -24,20 +29,22 @@ class PublicKey:
 
 
 class PrivateKey:
-    """X25519 private key for NaCl box (XSalsa20-Poly1305) encryption."""
+    """X25519 private key — the Noise XX static keypair for device-to-device
+    end-to-end encryption (docs/PROTOCOL.md §6)."""
 
-    def __init__(self, key: nacl.public.PrivateKey) -> None:
+    def __init__(self, key: X25519PrivateKey) -> None:
         self._key = key
 
     @property
     def public_key(self) -> PublicKey:
-        return PublicKey(bytes(self._key.public_key))
+        raw = self._key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        return PublicKey(raw)
 
     def to_bytes(self) -> bytes:
-        return bytes(self._key)
+        return self._key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
 
     def to_base64(self) -> str:
-        return base64.b64encode(bytes(self._key)).decode()
+        return base64.b64encode(self.to_bytes()).decode()
 
     def save_to_file(self, path: str | Path) -> None:
         p = Path(path).expanduser()
@@ -45,29 +52,17 @@ class PrivateKey:
         p.write_text(self.to_base64() + "\n")
         p.chmod(0o600)
 
-    def encrypt(self, plaintext: bytes, recipient: PublicKey) -> tuple[bytes, bytes]:
-        """Encrypt plaintext for recipient. Returns (ciphertext, nonce)."""
-        box = nacl.public.Box(self._key, nacl.public.PublicKey(recipient._raw))
-        nonce = nacl.utils.random(nacl.public.Box.NONCE_SIZE)
-        encrypted = box.encrypt(plaintext, nonce)
-        return bytes(encrypted.ciphertext), bytes(encrypted.nonce)
-
-    def decrypt(self, ciphertext: bytes, nonce: bytes, sender: PublicKey) -> bytes:
-        """Decrypt a ciphertext received from sender."""
-        box = nacl.public.Box(self._key, nacl.public.PublicKey(sender._raw))
-        return bytes(box.decrypt(ciphertext, nonce))
-
 
 def generate_key() -> PrivateKey:
     """Generate a new random X25519 private key."""
-    return PrivateKey(nacl.public.PrivateKey.generate())
+    return PrivateKey(X25519PrivateKey.generate())
 
 
 def load_key_from_file(path: str | Path) -> PrivateKey:
     """Load a private key from a file saved by PrivateKey.save_to_file()."""
     text = Path(path).expanduser().read_text().strip()
     raw = base64.b64decode(text)
-    return PrivateKey(nacl.public.PrivateKey(raw))
+    return PrivateKey(X25519PrivateKey.from_private_bytes(raw))
 
 
 def load_or_generate_key(path: str | Path) -> PrivateKey:
