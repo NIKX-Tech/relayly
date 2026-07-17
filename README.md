@@ -32,11 +32,11 @@ desktop, etc.) through a server you control. Encryption runs device-to-device us
 relay authenticates devices and mediates pairing, but holds no key material capable of
 reading message content, see [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the exact contract.
 
-> **SDK status:** the server and all four official SDKs (`sdk/go`, `sdk/ts`, `sdk/py`,
-> `sdk/rust`) now speak Protocol v1 and are proven interoperable by a required
-> cross-language CI matrix (`docs/tasks/02-sdks-and-interop.md`). See
+> **SDK status:** the server and all five official SDKs (`sdk/go`, `sdk/ts`, `sdk/py`,
+> `sdk/rust`, `sdk/cpp`) now speak Protocol v1 and are proven interoperable by a
+> required cross-language CI matrix (`docs/tasks/02-sdks-and-interop.md`). See
 > [RFC-000](docs/rfc/000-protocol-reconciliation.md) for the drift this fixed, and
-> [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next (the C++ SDK).
+> [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next.
 
 ---
 
@@ -182,7 +182,7 @@ go build -o relayly ./cmd/relayly
 
 ## 📦 Official Client SDKs
 
-Official SDKs for Go, TypeScript, and Python are in the `sdk/` directory and published to their respective package registries.
+Official SDKs for Go, TypeScript, Python, Rust, and C++ are in the `sdk/` directory and published to their respective package registries (C++ is consumed via CMake `FetchContent`, see below).
 
 ### Go SDK
 
@@ -311,6 +311,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 [crates.io/crates/relayly](https://crates.io/crates/relayly)
 
+### C++ SDK
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(relayly
+  GIT_REPOSITORY https://github.com/NIKX-Tech/relayly.git
+  SOURCE_SUBDIR sdk/cpp
+  GIT_TAG main
+)
+FetchContent_MakeAvailable(relayly)
+target_link_libraries(your_target PRIVATE relayly::relayly)
+```
+
+```cpp
+#include <relayly/client.hpp>
+#include <relayly/crypto.hpp>
+
+using namespace relayly;
+
+auto key = PrivateKey::LoadOrGenerate("~/.relayly/device.key");
+
+Options opts;
+opts.device_id = "my-laptop";
+opts.device_token = device_token;  // from POST /api/v1/devices
+opts.private_key = key;
+
+auto client = Client::Connect("wss://your-server/ws", opts);
+
+auto code = client->RequestPairCode();
+std::cout << "Code: " << code.short_code() << "\n";
+
+auto peer = client->AcceptPair("483921").get();
+std::string hello = "hello!";
+client->Send(peer.id, std::as_bytes(std::span(hello)));
+```
+
+See [`sdk/cpp/README.md`](sdk/cpp/README.md) for the threading model and dependency
+rationale.
+
 ---
 
 ## 💻 CLI Reference
@@ -420,7 +459,7 @@ Relayly is built on the principle of **Privacy by Design**:
 relayly/
 ├── cmd/relayly/      # Main server entry point
 ├── internal/         # Private server logic (Relay, Database, Admin)
-├── sdk/              # Official Client SDKs (Go, TS)
+├── sdk/              # Official Client SDKs (Go, TS, Python, Rust, C++)
 ├── examples/         # Reference implementations
 ├── docs/             # Protocol specs & architecture deep-dives
 ├── .github/          # Unified CI/CD workflows

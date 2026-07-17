@@ -39,6 +39,9 @@ jobs:
             sdk/rust
             interop/clients/rust
 
+      - name: Install C++ build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential libssl-dev
+
       - name: Install sdk/py
         run: pip install -e sdk/py
 
