@@ -16,7 +16,7 @@ import { WebSocket as NodeWebSocket } from 'ws';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).WebSocket = NodeWebSocket;
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -106,12 +106,20 @@ async function registerDevice(baseUrl: string, name: string): Promise<DeviceCred
 }
 
 describe('RelaylyClient self-pair integration', () => {
+  // Building the server binary is the slow, variable part on a cold CI runner (no
+  // Go build cache) - kept out of the 30s test timeout below, which should only
+  // need to cover the actual register/connect/pair/send flow against an
+  // already-built, already-running server.
+  let binPath: string;
+  beforeAll(async () => {
+    binPath = await buildRelayServer();
+  }, 60_000);
+
   it('registers, connects, pairs, and exchanges encrypted messages both ways', async () => {
     const { RelaylyClient } = await import('./client.js');
     const { generateKey } = await import('./crypto.js');
     const { InMemoryPeerKeyStore } = await import('./peerStore.js');
 
-    const binPath = await buildRelayServer();
     const server = await startRelayServer(binPath);
     try {
       const devA = await registerDevice(server.baseUrl, 'device-a');
