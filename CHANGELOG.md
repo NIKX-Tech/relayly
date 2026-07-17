@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - sdk/cpp: the fifth official SDK
+
+Closes out `docs/tasks/03-cpp-sdk.md`, the last item from the original v0.6 scoping —
+a C++20 SDK speaking Protocol v1 from day one, joining the cross-language interop
+matrix in the same PR.
+
+- New `sdk/cpp/` (the `relayly` CMake package, `relayly::relayly`): device-to-device
+  Noise XX (`Noise_XX_25519_ChaChaPoly_BLAKE2s`) hand-written over libsodium (X25519,
+  ChaCha20-Poly1305) plus a vendored copy of the official BLAKE2 reference
+  implementation (`BLAKE2/BLAKE2`) for the hash libsodium doesn't ship — verified
+  byte-for-byte against the same `flynn/noise` reference vectors already used by
+  `sdk/go`/`sdk/ts`/`sdk/py`/`sdk/rust`. WebSocket transport via IXWebSocket.
+  Dependencies (IXWebSocket, libsodium-cmake, nlohmann/json, Catch2 for tests) are
+  fetched via CMake `FetchContent`; `relayly` is built as a shared library so its
+  private dependencies don't need re-exporting to consumers. See `sdk/cpp/README.md`
+  for the full dependency rationale and threading model.
+- Public API: `Client::Connect`/`Send`/`RequestPairCode`/`AcceptPair`/`Close`,
+  `PrivateKey`/`PublicKey` (key files are byte-compatible with every other SDK's
+  base64 format), `PeerStore` (same shared `~/.relayly/peers.json` schema), and
+  `relayly::Error` with a typed `ErrorCode`.
+- A self-pair integration test (`sdk/cpp/tests/self_pair_test.cpp`) builds and runs
+  the real `cmd/relayly` server binary and drives two `Client` instances through
+  register/connect/pair/send both ways — the same category of test that caught real
+  wiring bugs in three of the four previous SDK PRs.
+- New `interop/clients/cpp/` shim joins the interop matrix (`interop/harness/`):
+  `cpp` is now one of five SDK names in the pairwise/negative-scenario loops, adding
+  5 new pairs (cpp×go, cpp×ts, cpp×py, cpp×rust, cpp×cpp) to the existing 10. New
+  `.github/workflows/cpp.yml` (Linux/macOS × gcc/clang, ASan/UBSan on one leg);
+  `.github/workflows/interop.yml` gained a C++ toolchain step.
+
 ## [Unreleased] - interop: cross-language CI matrix
 
 Closes out the v0.5 "SDK convergence" milestone (`docs/tasks/02-sdks-and-interop.md`):

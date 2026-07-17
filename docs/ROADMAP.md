@@ -15,17 +15,14 @@ is judged against that sentence.
   SDKs, publish workflows (PyPI/crates.io/npm), auto-reconnect.
   *Post-mortem: protocol drift between SDKs and server entered here undetected — no
   interop CI existed. See RFC-000.*
-
-## In flight
-
-- **v0.4 — Protocol v1** *(2 PRs)* · RFC-000 + normative PROTOCOL.md; server becomes a
-  true zero-knowledge relay (control channel, verbatim binary relay, announced-key
-  locking, `device_token` rename). → `docs/tasks/01-server.md`
-- **v0.5 — SDK convergence + interop CI** *(1 PR)* · All four SDKs implement the spec
-  (device↔device Noise XX, pinning); cross-language interop matrix becomes a required
-  CI check. → `docs/tasks/02-sdks-and-interop.md`
-- **v0.6 — C++ SDK** *(1 PR)* · `sdk/cpp` for native consumers (karshipta gateway),
-  joins the interop matrix. → `docs/tasks/03-cpp-sdk.md`
+- **v0.4 — Protocol v1** · RFC-000 + normative PROTOCOL.md; server rewritten to a true
+  zero-knowledge relay (control channel, verbatim binary relay, announced-key locking,
+  `device_token` rename). → `docs/tasks/01-server.md`
+- **v0.5 — SDK convergence + interop CI** · All four original SDKs (Go, TS, Python,
+  Rust) rewritten to the spec (device↔device Noise XX, pinning); cross-language
+  interop matrix became a required CI check. → `docs/tasks/02-sdks-and-interop.md`
+- **v0.6 — C++ SDK** · `sdk/cpp` for native consumers (karshipta gateway), joins the
+  interop matrix as its fifth SDK. → `docs/tasks/03-cpp-sdk.md`
 
 ## The road to v1.0
 

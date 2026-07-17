@@ -47,6 +47,20 @@ func prepareSDKs(root, buildDir string) (map[string]SDKDef, error) {
 	}
 	defs["py"] = SDKDef{Name: "py", Command: "python3", Args: []string{pyShim}}
 
+	// interop/clients/cpp has its own top-level CMakeLists.txt (add_subdirectory'ing
+	// sdk/cpp, with RELAYLY_BUILD_TESTS off so it doesn't also pull in Catch2 and
+	// sdk/cpp's own test suite just to build the shim), matching how the Go/Rust
+	// shims each get built from their own directory/toolchain context.
+	cppDir := filepath.Join(root, "interop", "clients", "cpp")
+	cppBuildDir := filepath.Join(buildDir, "cpp-build")
+	if err := runIn(cppDir, "cmake", "-S", ".", "-B", cppBuildDir, "-DCMAKE_BUILD_TYPE=Release"); err != nil {
+		return nil, fmt.Errorf("configuring cpp shim: %w", err)
+	}
+	if err := runIn(cppDir, "cmake", "--build", cppBuildDir, "-j", "4"); err != nil {
+		return nil, fmt.Errorf("building cpp shim: %w", err)
+	}
+	defs["cpp"] = SDKDef{Name: "cpp", Command: filepath.Join(cppBuildDir, "relayly-interop-shim-cpp")}
+
 	return defs, nil
 }
 
@@ -75,7 +89,7 @@ type negativeResult struct {
 // scenarios once per SDK (each in the "victim" role, paired against go), returning
 // results for the summary table.
 func runMatrix(server *RunningServer, proxy *Proxy, sdks map[string]SDKDef, tmpRoot string) ([]pairResult, []negativeResult, bool) {
-	names := []string{"go", "ts", "py", "rust"}
+	names := []string{"go", "ts", "py", "rust", "cpp"}
 	var pairs [][2]string
 	for i, a := range names {
 		for _, b := range names[i:] {
