@@ -82,7 +82,7 @@ instead of blocking, so you choose when (or whether) to wait.
 
 **v1 links exactly one peer per device.** Pairing again replaces whatever was linked
 before, it doesn't add a second one alongside it. Multi-peer support is a roadmap
-item (`docs/ROADMAP.md`, v0.7) — don't build for N simultaneous peers against this
+item (`docs/ROADMAP.md`, v0.7). Don't build for N simultaneous peers against this
 version.
 
 Devices pair using a short 6-digit code shared out-of-band (or via QR). Both
