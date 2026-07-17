@@ -9,6 +9,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(RELAYLY_BUILD_TESTS "Build relayly's unit/integration tests" ON)
 
+# relayly links statically-built dependencies (sodium, nlohmann_json) into a shared
+# library (see "Why shared?" below). libsodium-cmake doesn't build its `sodium`
+# target with -fPIC itself, which fails at link time on Linux ("recompile with
+# -fPIC") — this must be set before FetchContent pulls it in, since it's read at
+# the point each target is created.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dependencies.cmake")
 
