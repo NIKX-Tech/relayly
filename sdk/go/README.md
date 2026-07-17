@@ -65,6 +65,11 @@ func main() {
 
 ## Pairing
 
+**v1 links exactly one peer per device.** Pairing again replaces whatever was linked
+before, it doesn't add a second one alongside it. Multi-peer support is a roadmap
+item (`docs/ROADMAP.md`, v0.7) — don't build for N simultaneous peers against this
+version.
+
 ```go
 // Device A - request a code
 code, err := client.RequestPairCode(ctx)
