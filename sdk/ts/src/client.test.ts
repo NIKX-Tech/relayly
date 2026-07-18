@@ -6,9 +6,9 @@
  * (docs/tasks/02-sdks-and-interop.md), landed early since it directly de-risks this
  * PR the same way sdk/go's client_test.go does.
  *
- * Node has no global WebSocket on two of the three Node versions this repo's CI
- * matrix tests (18, 20; only 22 has it natively), so this file polyfills
- * globalThis.WebSocket with the `ws` package before importing RelaylyClient — a
+ * Node has no global WebSocket on one of the two Node versions this repo's CI
+ * matrix tests (20; only 22 has it natively), so this file polyfills
+ * globalThis.WebSocket with the `ws` package before importing RelaylyClient - a
  * test-only devDependency, not a runtime dependency of the SDK.
  */
 import { WebSocket as NodeWebSocket } from 'ws';
@@ -16,7 +16,7 @@ import { WebSocket as NodeWebSocket } from 'ws';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).WebSocket = NodeWebSocket;
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -106,12 +106,20 @@ async function registerDevice(baseUrl: string, name: string): Promise<DeviceCred
 }
 
 describe('RelaylyClient self-pair integration', () => {
+  // Building the server binary is the slow, variable part on a cold CI runner (no
+  // Go build cache) - kept out of the 30s test timeout below, which should only
+  // need to cover the actual register/connect/pair/send flow against an
+  // already-built, already-running server.
+  let binPath: string;
+  beforeAll(async () => {
+    binPath = await buildRelayServer();
+  }, 60_000);
+
   it('registers, connects, pairs, and exchanges encrypted messages both ways', async () => {
     const { RelaylyClient } = await import('./client.js');
     const { generateKey } = await import('./crypto.js');
     const { InMemoryPeerKeyStore } = await import('./peerStore.js');
 
-    const binPath = await buildRelayServer();
     const server = await startRelayServer(binPath);
     try {
       const devA = await registerDevice(server.baseUrl, 'device-a');

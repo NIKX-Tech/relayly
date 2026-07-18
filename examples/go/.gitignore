@@ -1,0 +1,8 @@
+# go build's default output name matches the containing directory, e.g.
+# examples/go/chat/chat - never commit these. Anchored to each directory's own
+# binary (not a bare basename) so this can't accidentally match the directory
+# itself or an unrelated same-named file elsewhere.
+/basic/basic
+/chat/chat
+/clipboard-sync/clipboard-sync
+/pair-and-send/pair-and-send

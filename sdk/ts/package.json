@@ -45,6 +45,9 @@
   ],
   "author": "NIKX-Tech",
   "license": "MIT",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/NIKX-Tech/relayly",
