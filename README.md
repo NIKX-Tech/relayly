@@ -34,16 +34,42 @@ reading message content, see [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the exac
 **Protocol v1 links exactly one peer per device.** Multi-peer fan-out is a roadmap item
 (v0.7 below), not something to build against today.
 
-> **SDK status:** the server and all five official SDKs (`sdk/go`, `sdk/ts`, `sdk/py`,
-> `sdk/rust`, `sdk/cpp`) now speak Protocol v1 and are proven interoperable by a
-> required cross-language CI matrix (`docs/tasks/02-sdks-and-interop.md`). See
-> [RFC-000](docs/rfc/000-protocol-reconciliation.md) for the drift this fixed, and
-> [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next.
+---
+
+## 🧬 A protocol, not just a server
+
+[`docs/PROTOCOL.md`](docs/PROTOCOL.md) is the normative spec, not a description of what
+one implementation happens to do. Any client that implements it can talk to any other,
+through any relay, regardless of language. That claim is enforced, not aspirational:
+five independent SDKs (Go, TypeScript, Python, Rust, C++) each implement the spec from
+scratch, and a required cross-language CI matrix pairs every one of them against every
+other and against itself before a change can merge. Conformance is defined the same way
+in the spec itself (§10): pass that matrix, or it doesn't count.
+
+```mermaid
+graph LR
+    subgraph Devices["Your devices (pick any SDK)"]
+        D1["📱 sdk/ts"]
+        D2["💻 sdk/go"]
+        D3["🛰️ sdk/cpp"]
+    end
+
+    D1 <-->|"Noise XX handshake<br/>E2E ciphertext only"| S
+    D2 <-->|"Noise XX handshake<br/>E2E ciphertext only"| S
+    D3 <-->|"Noise XX handshake<br/>E2E ciphertext only"| S
+
+    S(["🔒 Relayly server<br/>authenticates + pairs devices<br/>holds no key material"])
+```
+
+The server and all five official SDKs (`sdk/go`, `sdk/ts`, `sdk/py`, `sdk/rust`,
+`sdk/cpp`) speak Protocol v1 today. See [RFC-000](docs/rfc/000-protocol-reconciliation.md)
+for the drift this replaced, and [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next.
 
 ---
 
 ## 📖 Table of Contents
 
+- [A protocol, not just a server](#-a-protocol-not-just-a-server)
 - [Features](#-features)
 - [How it Works](#-how-it-works)
 - [Quick Start](#-quick-start)
