@@ -3,7 +3,7 @@
 
 <img src="docs/images/logo.png" width="70" alt="Relayly Logo">
 
-**Lightweight, self-hosted WebSocket relay for local-first, end-to-end encrypted device communication.**
+**A self-hosted protocol and relay for end-to-end encrypted, device-to-device communication.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/NIKX-Tech/relayly/ci.yml?branch=main&style=flat-square&label=build)](https://github.com/NIKX-Tech/relayly/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/NIKX-Tech/relayly?label=openssf%20scorecard&style=flat-square)](https://securityscorecards.dev/projects/github.com/NIKX-Tech/relayly)
