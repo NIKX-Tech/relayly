@@ -26,25 +26,43 @@
 [![Website](https://img.shields.io/badge/website-relayly.app-4F46E5?style=flat-square&logo=google-chrome&logoColor=white)](https://relayly.app)
 [![Discord](https://img.shields.io/badge/discord-join%20chat-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/cTFMfk6V7)
 
-Relayly enables trustless message routing between your own devices (phone, laptop,
-desktop, etc.) through a server you control. Encryption runs device-to-device using the
-[Noise Protocol](https://noiseprotocol.org/) (`Noise_XX_25519_ChaChaPoly_BLAKE2s`); the
-relay authenticates devices and mediates pairing, but holds no key material capable of
-reading message content, see [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the exact contract.
-**Protocol v1 links exactly one peer per device.** Multi-peer fan-out is a roadmap item
-(v0.7 below), not something to build against today.
+Relayly is a protocol and reference relay for end-to-end encrypted, device-to-device
+communication over untrusted infrastructure. Devices authenticate to the relay and pair
+through a short out-of-band code; the session itself is established directly between
+the two devices using the [Noise Protocol Framework](https://noiseprotocol.org/)
+(`Noise_XX_25519_ChaChaPoly_BLAKE2s`), giving mutual authentication and forward secrecy
+that hold regardless of the relay's own integrity. The relay coordinates pairing and
+forwards ciphertext, but holds no key material and is cryptographically excluded from
+every session it carries; operators run it themselves rather than depend on a
+third-party provider. See [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the normative wire
+specification.
 
 ---
 
-## 🧬 A protocol, not just a server
+## 📖 Table of Contents
 
-[`docs/PROTOCOL.md`](docs/PROTOCOL.md) is the normative spec, not a description of what
-one implementation happens to do. Any client that implements it can talk to any other,
-through any relay, regardless of language. That claim is enforced, not aspirational:
-five independent SDKs (Go, TypeScript, Python, Rust, C++) each implement the spec from
-scratch, and a required cross-language CI matrix pairs every one of them against every
-other and against itself before a change can merge. Conformance is defined the same way
-in the spec itself (§10): pass that matrix, or it doesn't count.
+- [Protocol & Conformance](#-protocol--conformance)
+- [Features](#-features)
+- [How it Works](#-how-it-works)
+- [Quick Start](#-quick-start)
+- [Official Client SDKs](#-official-client-sdks)
+- [CLI Reference](#-cli-reference)
+- [Configuration](#-configuration)
+- [Admin UI](#-admin-ui)
+- [WebSocket Connection Protocol](#-websocket-connection-protocol)
+- [Production Deployment](#-production-deployment)
+- [Security & Privacy](#-security--privacy)
+- [Contributing](#-contributing)
+
+---
+
+## 🧬 Protocol & Conformance
+
+[`docs/PROTOCOL.md`](docs/PROTOCOL.md) is the normative wire spec. Five independent
+SDKs (Go, TypeScript, Python, Rust, C++) implement it from scratch, and a required
+cross-language CI matrix pairs every one of them against every other, and against
+itself, before any change can merge. Conformance is defined the same way in the spec
+itself (§10): pass that matrix, or it doesn't count.
 
 ```mermaid
 graph LR
@@ -64,23 +82,7 @@ graph LR
 The server and all five official SDKs (`sdk/go`, `sdk/ts`, `sdk/py`, `sdk/rust`,
 `sdk/cpp`) speak Protocol v1 today. See [RFC-000](docs/rfc/000-protocol-reconciliation.md)
 for the drift this replaced, and [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next.
-
----
-
-## 📖 Table of Contents
-
-- [A protocol, not just a server](#-a-protocol-not-just-a-server)
-- [Features](#-features)
-- [How it Works](#-how-it-works)
-- [Quick Start](#-quick-start)
-- [Official Client SDKs](#-official-client-sdks)
-- [CLI Reference](#-cli-reference)
-- [Configuration](#-configuration)
-- [Admin UI](#-admin-ui)
-- [WebSocket Connection Protocol](#-websocket-connection-protocol)
-- [Production Deployment](#-production-deployment)
-- [Security & Privacy](#-security--privacy)
-- [Contributing](#-contributing)
+Protocol v1 links exactly one peer per device; multi-peer fan-out is scoped for v0.7.
 
 ---
 
