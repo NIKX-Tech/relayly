@@ -2,11 +2,11 @@
 //
 // Usage:
 //
-//	# On the first device — request a pairing code and print it:
-//	clipboard-sync --server ws://localhost:8080
+//	# On the first device, request a pairing code and print it:
+//	clipboard-sync --server ws://localhost:8080/ws
 //
-//	# On the second device — accept the code printed by the first device:
-//	clipboard-sync --server ws://localhost:8080 --code <code-from-first-device>
+//	# On the second device, accept the code printed by the first device:
+//	clipboard-sync --server ws://localhost:8080/ws --code <code-from-first-device>
 //
 // After pairing both devices poll the clipboard every 500 ms.
 // When the local clipboard changes the new content is sent to the peer.
@@ -35,11 +35,11 @@ import (
 const (
 	pollInterval = 500 * time.Millisecond
 	keyPath      = "~/.relayly/clipboard.key"
-	deviceIDEnv  = "RELAYLY_DEVICE_ID"
+	credsPath    = "~/.relayly/clipboard-device.json"
 )
 
 func main() {
-	server := flag.String("server", "ws://localhost:8080", "Relay server URL")
+	server := flag.String("server", "ws://localhost:8080/ws", "Relay server URL")
 	code := flag.String("code", "", "Pairing code from peer device (omit to generate a new one)")
 	flag.Parse()
 
@@ -49,19 +49,10 @@ func main() {
 		log.Fatalf("key error: %v", err)
 	}
 
-	// Use a stable device ID from the environment, or derive one from the key.
-	deviceID := os.Getenv(deviceIDEnv)
-	if deviceID == "" {
-		pub, err := key.PublicKey()
-		if err != nil {
-			log.Fatalf("deriving public key: %v", err)
-		}
-		// Use first 16 chars of the base64 public key as a stable device ID.
-		b64 := pub.Base64()
-		if len(b64) > 16 {
-			b64 = b64[:16]
-		}
-		deviceID = "clipboard-" + b64
+	// Register (or reuse) this device's server-issued credentials.
+	deviceID, deviceToken, err := registerOrLoadDevice(*server, credsPath, "clipboard-device")
+	if err != nil {
+		log.Fatalf("device registration error: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -69,8 +60,9 @@ func main() {
 
 	// Connect to the relay server.
 	client, err := relayly.Connect(ctx, *server, relayly.Options{
-		DeviceID:   deviceID,
-		PrivateKey: key,
+		DeviceID:    deviceID,
+		DeviceToken: deviceToken,
+		PrivateKey:  key,
 	})
 	if err != nil {
 		log.Fatalf("connect error: %v", err)

@@ -2,10 +2,10 @@ name: TypeScript SDK
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     paths: ["sdk/ts/**"]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     paths: ["sdk/ts/**"]
 
 jobs:
@@ -15,7 +15,10 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [18, 20, 22]
+        # @noble/hashes (our Noise XX crypto backend) requires Node >=20.19.0 itself
+        # (no globalThis.crypto.getRandomValues on 18 without a polyfill this SDK
+        # doesn't ship) - matches the engines field in package.json.
+        node-version: [20, 22]
 
     steps:
       - uses: actions/checkout@v4

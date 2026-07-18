@@ -1,13 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { 
-  generateKey, 
-  encrypt, 
-  decrypt, 
-  encodeBase64, 
-  decodeBase64, 
-  stringToBytes, 
-  bytesToString 
-} from './crypto';
+import { generateKey, keyPairFromPrivateKey, encodeBase64, decodeBase64, stringToBytes, bytesToString } from './crypto';
 
 describe('Relayly Crypto', () => {
   it('should generate a valid keypair', () => {
@@ -16,44 +8,33 @@ describe('Relayly Crypto', () => {
     expect(keyPair.privateKey).toHaveLength(32);
   });
 
-  it('should encrypt and decrypt messages correctly', () => {
-    const alice = generateKey();
-    const bob = generateKey();
-    
-    const message = 'Hello Bob, I am Alice!';
-    const plaintext = stringToBytes(message);
-    
-    // Alice encrypts for Bob
-    const { ciphertext, nonce } = encrypt(plaintext, bob.publicKey, alice.privateKey);
-    
-    // Bob decrypts from Alice
-    const decryptedBytes = decrypt(ciphertext, nonce, alice.publicKey, bob.privateKey);
-    const decryptedMessage = bytesToString(decryptedBytes);
-    
-    expect(decryptedMessage).toBe(message);
+  it('should generate different keys each time', () => {
+    const a = generateKey();
+    const b = generateKey();
+    expect(encodeBase64(a.privateKey)).not.toBe(encodeBase64(b.privateKey));
+  });
+
+  it('should restore the same keypair from a saved base64 private key', () => {
+    const original = generateKey();
+    const restored = keyPairFromPrivateKey(encodeBase64(original.privateKey));
+    expect(encodeBase64(restored.privateKey)).toBe(encodeBase64(original.privateKey));
+    expect(encodeBase64(restored.publicKey)).toBe(encodeBase64(original.publicKey));
+  });
+
+  it('should reject a private key of the wrong length', () => {
+    expect(() => keyPairFromPrivateKey(encodeBase64(new Uint8Array(16)))).toThrow();
   });
 
   it('should handle base64 encoding/decoding', () => {
     const bytes = new Uint8Array([1, 2, 3, 4, 5]);
     const b64 = encodeBase64(bytes);
     const decoded = decodeBase64(b64);
-    
+
     expect(decoded).toEqual(bytes);
   });
 
-  it('should fail decryption with wrong keys', () => {
-    const alice = generateKey();
-    const bob = generateKey();
-    const eve = generateKey();
-    
-    const message = 'Secret message';
-    const plaintext = stringToBytes(message);
-    
-    const { ciphertext, nonce } = encrypt(plaintext, bob.publicKey, alice.privateKey);
-    
-    // Eve tries to decrypt with her own key
-    expect(() => {
-      decrypt(ciphertext, nonce, alice.publicKey, eve.privateKey);
-    }).toThrow();
+  it('should round-trip UTF-8 strings', () => {
+    const message = 'Hello, 世界! 👋';
+    expect(bytesToString(stringToBytes(message))).toBe(message);
   });
 });

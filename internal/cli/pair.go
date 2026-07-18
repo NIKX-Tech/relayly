@@ -63,13 +63,13 @@ func runPair(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("\n✓  Device registered: %q\n", device.Name)
 	fmt.Printf("   ID:    %s\n", device.ID)
-	fmt.Printf("   Token: %s\n\n", device.PairToken)
+	fmt.Printf("   Token: %s\n\n", device.DeviceToken)
 
 	if !pairNoQR {
 		// Encode as a URI for the client to parse:
 		// relayly://pair?device_id=<id>&token=<token>
 		pairingURI := fmt.Sprintf("relayly://pair?device_id=%s&token=%s",
-			device.ID, device.PairToken)
+			device.ID, device.DeviceToken)
 
 		fmt.Println("Scan this QR code with your Relayly client app:")
 		fmt.Println()

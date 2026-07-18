@@ -15,7 +15,7 @@ import (
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "Usage: %s <server-url> <pair-code>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Example: %s wss://relay.example.com 483921\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Example: %s wss://relay.example.com/ws 483921\n", os.Args[0])
 		os.Exit(1)
 	}
 
@@ -31,10 +31,17 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Register (or reuse) this device's server-issued credentials
+	deviceID, deviceToken, err := registerOrLoadDevice(serverURL, "~/.relayly/pair-and-send-device.json", "my-phone")
+	if err != nil {
+		log.Fatalf("device registration error: %v", err)
+	}
+
 	// Connect to the relay server
 	client, err := relayly.Connect(ctx, serverURL, relayly.Options{
-		DeviceID:   "my-phone",
-		PrivateKey: key,
+		DeviceID:    deviceID,
+		DeviceToken: deviceToken,
+		PrivateKey:  key,
 	})
 	if err != nil {
 		log.Fatalf("connect error: %v", err)

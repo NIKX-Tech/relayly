@@ -3,18 +3,20 @@
 // Relayly is a lightweight, self-hosted WebSocket relay server for local-first applications.
 // It enables secure, end-to-end encrypted communication between a user's own devices
 // (phone, laptop, desktop, etc.) without any third-party infrastructure having access
-// to message contents.
+// to message contents. Encryption runs device-to-device using Noise XX
+// (docs/PROTOCOL.md); the relay itself holds no key material.
 //
 // # Quick Start
 //
-//	key, err := relayly.GenerateKey()
+//	key, err := relayly.LoadOrGenerateKey("~/.relayly/device.key")
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //
 //	client, err := relayly.Connect(context.Background(), "wss://relay.example.com", relayly.Options{
-//	    DeviceID:   "my-laptop",
-//	    PrivateKey: key,
+//	    DeviceID:    "my-laptop",
+//	    DeviceToken: token, // from POST /api/v1/devices or `relayly pair`
+//	    PrivateKey:  key,
 //	})
 //	if err != nil {
 //	    log.Fatal(err)
@@ -24,9 +26,8 @@
 //	// Request a pairing code to share with another device
 //	code, err := client.RequestPairCode(context.Background())
 //	fmt.Println("Share this code:", code.Short)
-//	fmt.Println("Or scan QR:", code.QRCodeURL("wss://relay.example.com"))
 //
-//	// Wait for pairing to complete
+//	// Wait for pairing to complete (blocks until the Noise handshake is up too)
 //	peer, err := code.Wait(context.Background())
 //
 //	// Send an encrypted message
@@ -61,7 +62,29 @@ const (
 
 	// DefaultWriteTimeout is the timeout for WebSocket write operations.
 	DefaultWriteTimeout = 10 * time.Second
+
+	// handshakeTimeout bounds how long a single Noise handshake attempt (initial
+	// pairing or a rekey) is allowed to take before it's considered failed.
+	handshakeTimeout = 15 * time.Second
 )
+
+// outFrame is an outbound WebSocket frame together with its message type, so
+// writeLoop can tell a JSON control message (text) apart from an E2E envelope (binary).
+type outFrame struct {
+	kind int
+	data []byte
+}
+
+func controlFrame(msg controlMessage) outFrame {
+	data, _ := json.Marshal(msg) // controlMessage has no unmarshalable fields
+	return outFrame{kind: websocket.TextMessage, data: data}
+}
+
+// pairWaiter is what a pending RequestPairCode/AcceptPair call is waiting on.
+type pairWaiter struct {
+	ch            chan PairResult
+	weAreAcceptor bool // true if this waiter came from AcceptPair (we initiate, §5.3)
+}
 
 // Client is a connected Relayly client. Use Connect to create one.
 type Client struct {
@@ -72,17 +95,16 @@ type Client struct {
 	conn   *websocket.Conn
 	closed bool
 
-	// peers holds paired remote devices (populated after pairing).
-	peers   []Peer
+	peerStore *PeerStore
+
 	peersMu sync.RWMutex
+	peers   map[string]*peerConn // device ID -> peer connection (v1: at most one)
 
 	messages chan Message
-	pairs    chan PairResult
-	sends    chan wireMessage
+	sends    chan outFrame
 
-	// inflight pair requests: code -> channel waiting for pair_complete
-	pairWaiters   map[string]chan PairResult
 	pairWaitersMu sync.Mutex
+	pairWaiters   map[string]pairWaiter
 
 	done chan struct{}
 }
@@ -90,15 +112,15 @@ type Client struct {
 // Connect dials a Relayly server and authenticates. It returns a ready-to-use Client.
 //
 //	client, err := relayly.Connect(ctx, "wss://relay.example.com", relayly.Options{
-//	    DeviceID:   "my-laptop",
-//	    PrivateKey: key,
+//	    DeviceID:    "my-laptop",
+//	    DeviceToken: token,
+//	    PrivateKey:  key,
 //	})
 func Connect(ctx context.Context, serverURL string, opts Options) (*Client, error) {
 	if err := opts.validate(); err != nil {
 		return nil, fmt.Errorf("relayly: invalid options: %w", err)
 	}
 
-	// Normalize the URL
 	u, err := url.Parse(serverURL)
 	if err != nil {
 		return nil, fmt.Errorf("relayly: invalid server URL: %w", err)
@@ -109,14 +131,20 @@ func Connect(ctx context.Context, serverURL string, opts Options) (*Client, erro
 		u.Scheme = "wss"
 	}
 
+	peerStore, err := LoadPeerStore(opts.peerStorePath())
+	if err != nil {
+		return nil, fmt.Errorf("relayly: loading peer store: %w", err)
+	}
+
 	c := &Client{
-		opts:       opts,
-		serverURL:  u.String(),
-		messages:   make(chan Message, 64),
-		pairs:      make(chan PairResult, 8),
-		sends:      make(chan wireMessage, 64),
-		pairWaiters: make(map[string]chan PairResult),
-		done:       make(chan struct{}),
+		opts:        opts,
+		serverURL:   u.String(),
+		peerStore:   peerStore,
+		peers:       make(map[string]*peerConn),
+		messages:    make(chan Message, 64),
+		sends:       make(chan outFrame, 64),
+		pairWaiters: make(map[string]pairWaiter),
+		done:        make(chan struct{}),
 	}
 
 	if err := c.dial(ctx); err != nil {
@@ -130,13 +158,21 @@ func Connect(ctx context.Context, serverURL string, opts Options) (*Client, erro
 	return c, nil
 }
 
-// dial establishes the WebSocket connection and performs authentication.
+// dial establishes the WebSocket connection, authenticates at the HTTP layer via
+// query params (docs/PROTOCOL.md §3), consumes welcome, and announces our static key.
 func (c *Client) dial(ctx context.Context) error {
-	dialer := websocket.Dialer{
-		HandshakeTimeout: 10 * time.Second,
-	}
+	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
 
-	conn, _, err := dialer.DialContext(ctx, c.serverURL, nil)
+	u, err := url.Parse(c.serverURL)
+	if err != nil {
+		return fmt.Errorf("relayly: invalid server URL: %w", err)
+	}
+	q := u.Query()
+	q.Set("device_id", c.opts.DeviceID)
+	q.Set("token", c.opts.DeviceToken)
+	u.RawQuery = q.Encode()
+
+	conn, _, err := dialer.DialContext(ctx, u.String(), nil)
 	if err != nil {
 		return fmt.Errorf("relayly: failed to connect to %s: %w", c.serverURL, err)
 	}
@@ -145,72 +181,101 @@ func (c *Client) dial(ctx context.Context) error {
 	c.conn = conn
 	c.mu.Unlock()
 
-	// Send authentication frame
-	pubKey, err := c.opts.PrivateKey.PublicKey()
+	msgType, data, err := conn.ReadMessage()
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("relayly: failed to read welcome: %w", err)
+	}
+	if msgType != websocket.TextMessage {
+		conn.Close()
+		return fmt.Errorf("relayly: expected a text welcome frame")
+	}
+	var welcome controlMessage
+	if err := json.Unmarshal(data, &welcome); err != nil {
+		conn.Close()
+		return fmt.Errorf("relayly: invalid welcome frame: %w", err)
+	}
+	if welcome.Type == msgTypeError {
+		conn.Close()
+		return fmt.Errorf("relayly: authentication failed: %s (%s)", welcome.Message, welcome.Code)
+	}
+	if welcome.Type != msgTypeWelcome {
+		conn.Close()
+		return fmt.Errorf("relayly: unexpected first frame type: %s", welcome.Type)
+	}
+	if welcome.ProtocolVersion != protocolVersion {
+		conn.Close()
+		return fmt.Errorf("relayly: unsupported protocol_version %d (this SDK implements %d)",
+			welcome.ProtocolVersion, protocolVersion)
+	}
+	c.applyWelcomePeers(welcome.Peers)
+
+	pub, err := c.opts.PrivateKey.PublicKey()
 	if err != nil {
 		conn.Close()
 		return fmt.Errorf("relayly: failed to derive public key: %w", err)
 	}
-
-	authMsg := wireMessage{
-		Type:      msgTypeAuth,
-		DeviceID:  c.opts.DeviceID,
-		PublicKey: pubKey.Base64(),
-	}
-
-	if err := c.writeJSON(conn, authMsg); err != nil {
+	announce := controlMessage{Type: msgTypeAnnounceKey, StaticKey: pub.Base64()}
+	if err := c.writeJSON(conn, announce); err != nil {
 		conn.Close()
-		return fmt.Errorf("relayly: failed to send auth: %w", err)
-	}
-
-	// Wait for auth_ok
-	_, data, err := conn.ReadMessage()
-	if err != nil {
-		conn.Close()
-		return fmt.Errorf("relayly: failed to read auth response: %w", err)
-	}
-
-	var resp wireMessage
-	if err := json.Unmarshal(data, &resp); err != nil {
-		conn.Close()
-		return fmt.Errorf("relayly: invalid auth response: %w", err)
-	}
-
-	if resp.Type == msgTypeError {
-		conn.Close()
-		return fmt.Errorf("relayly: authentication failed: %s (%s)", resp.Message, resp.Code)
-	}
-	if resp.Type != msgTypeAuthOK {
-		conn.Close()
-		return fmt.Errorf("relayly: unexpected auth response type: %s", resp.Type)
+		return fmt.Errorf("relayly: failed to send announce_key: %w", err)
 	}
 
 	return nil
 }
 
-// Send encrypts and sends a message to a paired peer device.
+// applyWelcomePeers registers any peer(s) welcome reports as already linked, without
+// disturbing a peerConn that already exists (a reconnect must not discard a still-healthy
+// active session just because the control channel briefly reset).
+func (c *Client) applyWelcomePeers(peers []wirePeer) {
+	for _, p := range peers {
+		if c.getPeerConn(p.ID) == nil {
+			c.setPeerConn(p.ID, newPeerConn(p.ID, p.StaticKey))
+		}
+	}
+}
+
+func (c *Client) getPeerConn(id string) *peerConn {
+	c.peersMu.RLock()
+	defer c.peersMu.RUnlock()
+	return c.peers[id]
+}
+
+func (c *Client) setPeerConn(id string, p *peerConn) {
+	c.peersMu.Lock()
+	c.peers[id] = p
+	c.peersMu.Unlock()
+}
+
+// getSolePeer returns this device's one linked peer, if any (v1 supports exactly one
+// linked peer per device, docs/PROTOCOL.md §5.3). Incoming binary envelopes carry no
+// sender field — the relay only ever forwards them from the paired device.
+func (c *Client) getSolePeer() *peerConn {
+	c.peersMu.RLock()
+	defer c.peersMu.RUnlock()
+	for _, p := range c.peers {
+		return p
+	}
+	return nil
+}
+
+// Send encrypts and sends a message to a paired peer.
 //
 //	err := client.Send(ctx, peer.ID, []byte("hello!"))
 func (c *Client) Send(ctx context.Context, peerID string, payload []byte) error {
-	peer, ok := c.findPeer(peerID)
-	if !ok {
+	peer := c.getPeerConn(peerID)
+	if peer == nil {
 		return fmt.Errorf("relayly: no paired peer with ID %q — call AcceptPair or RequestPairCode first", peerID)
 	}
 
-	ciphertext, nonce, err := c.opts.PrivateKey.Encrypt(payload, peer.PublicKey)
+	ciphertext, err := peer.send(payload)
 	if err != nil {
-		return fmt.Errorf("relayly: encryption failed: %w", err)
+		return err
 	}
 
-	msg := wireMessage{
-		Type:    msgTypeSend,
-		To:      peerID,
-		Payload: encodeBase64(ciphertext),
-		Nonce:   encodeBase64(nonce[:]),
-	}
-
+	frame := outFrame{kind: websocket.BinaryMessage, data: encodeEnvelope(envelopeTransport, ciphertext)}
 	select {
-	case c.sends <- msg:
+	case c.sends <- frame:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -221,34 +286,27 @@ func (c *Client) Send(ctx context.Context, peerID string, payload []byte) error 
 
 // Messages returns a channel of incoming decrypted messages from paired peers.
 // The channel is closed when the client is closed.
-//
-//	for msg := range client.Messages() {
-//	    fmt.Printf("[%s] %s\n", msg.From, msg.Payload)
-//	}
 func (c *Client) Messages() <-chan Message {
 	return c.messages
 }
 
 // RequestPairCode asks the server to generate a short pairing code.
-// The returned PairCode contains a 6-digit Short code and a QR code URL.
-// Call code.Wait(ctx) to block until the other device accepts the pairing.
+// Call code.Wait(ctx) to block until the other device accepts the pairing (including
+// the resulting Noise handshake completing).
 //
 //	code, err := client.RequestPairCode(ctx)
 //	fmt.Println("Share this code:", code.Short)
 //	peer, err := code.Wait(ctx)
 func (c *Client) RequestPairCode(ctx context.Context) (*PairCode, error) {
-	// Register a waiter channel before sending the request, so we don't miss the response.
 	waiterKey := "__request__"
 	ch := make(chan PairResult, 1)
 
 	c.pairWaitersMu.Lock()
-	c.pairWaiters[waiterKey] = ch
+	c.pairWaiters[waiterKey] = pairWaiter{ch: ch}
 	c.pairWaitersMu.Unlock()
 
-	msg := wireMessage{Type: msgTypePairRequest}
-
 	select {
-	case c.sends <- msg:
+	case c.sends <- controlFrame(controlMessage{Type: msgTypePairRequest}):
 	case <-ctx.Done():
 		c.removePairWaiter(waiterKey)
 		return nil, ctx.Err()
@@ -257,7 +315,6 @@ func (c *Client) RequestPairCode(ctx context.Context) (*PairCode, error) {
 		return nil, fmt.Errorf("relayly: client is closed")
 	}
 
-	// Wait for pair_code response
 	select {
 	case result := <-ch:
 		if result.Error != nil {
@@ -269,9 +326,8 @@ func (c *Client) RequestPairCode(ctx context.Context) (*PairCode, error) {
 			client:    c,
 			resultCh:  make(chan PairResult, 1),
 		}
-		// Register a waiter for the eventual pair_complete
 		c.pairWaitersMu.Lock()
-		c.pairWaiters[result.Code] = pc.resultCh
+		c.pairWaiters[result.Code] = pairWaiter{ch: pc.resultCh}
 		c.pairWaitersMu.Unlock()
 		return pc, nil
 	case <-ctx.Done():
@@ -283,23 +339,20 @@ func (c *Client) RequestPairCode(ctx context.Context) (*PairCode, error) {
 	}
 }
 
-// AcceptPair uses a 6-digit code from another device to complete the pairing.
+// AcceptPair uses a 6-digit code from another device to complete the pairing. It
+// blocks until the resulting Noise handshake completes (docs/PROTOCOL.md §5.3: the
+// accepting device is the initiator), so the returned Peer can be Sent to immediately.
 //
 //	peer, err := client.AcceptPair(ctx, "483921")
 func (c *Client) AcceptPair(ctx context.Context, code string) (*Peer, error) {
 	ch := make(chan PairResult, 1)
 
 	c.pairWaitersMu.Lock()
-	c.pairWaiters[code] = ch
+	c.pairWaiters[code] = pairWaiter{ch: ch, weAreAcceptor: true}
 	c.pairWaitersMu.Unlock()
 
-	msg := wireMessage{
-		Type: msgTypePairAccept,
-		Code: code,
-	}
-
 	select {
-	case c.sends <- msg:
+	case c.sends <- controlFrame(controlMessage{Type: msgTypePairAccept, Code: code}):
 	case <-ctx.Done():
 		c.removePairWaiter(code)
 		return nil, ctx.Err()
@@ -313,9 +366,7 @@ func (c *Client) AcceptPair(ctx context.Context, code string) (*Peer, error) {
 		if result.Error != nil {
 			return nil, result.Error
 		}
-		peer := &Peer{ID: result.PeerID, PublicKey: result.PeerPublicKey}
-		c.addPeer(peer)
-		return peer, nil
+		return &Peer{ID: result.PeerID, PublicKey: result.PeerPublicKey}, nil
 	case <-ctx.Done():
 		c.removePairWaiter(code)
 		return nil, ctx.Err()
@@ -355,7 +406,7 @@ func (c *Client) readLoop() {
 		conn := c.conn
 		c.mu.Unlock()
 
-		_, data, err := conn.ReadMessage()
+		msgType, data, err := conn.ReadMessage()
 		if err != nil {
 			select {
 			case <-c.done:
@@ -368,12 +419,26 @@ func (c *Client) readLoop() {
 			continue
 		}
 
-		var frame wireMessage
-		if err := json.Unmarshal(data, &frame); err != nil {
-			continue // skip malformed frames
-		}
+		switch msgType {
+		case websocket.TextMessage:
+			var frame controlMessage
+			if err := json.Unmarshal(data, &frame); err != nil {
+				continue // skip malformed frames
+			}
+			c.dispatch(frame)
 
-		c.dispatch(frame)
+		case websocket.BinaryMessage:
+			kind, payload, ok := decodeEnvelope(data)
+			if !ok {
+				continue
+			}
+			switch kind {
+			case envelopeHandshake:
+				c.handleHandshakeEnvelope(payload)
+			case envelopeTransport:
+				c.handleTransportEnvelope(payload)
+			}
+		}
 	}
 }
 
@@ -387,7 +452,7 @@ func (c *Client) reconnectWithBackoff(cause error) bool {
 
 	delay := c.opts.ReconnectDelay
 	if delay < 0 {
-		return false // reconnection disabled by caller
+		return false
 	}
 	if delay == 0 {
 		delay = DefaultReconnectDelay
@@ -421,15 +486,15 @@ func (c *Client) reconnectWithBackoff(cause error) bool {
 	}
 }
 
-// writeLoop serialises outgoing messages onto the WebSocket.
+// writeLoop serialises outgoing frames onto the WebSocket.
 func (c *Client) writeLoop() {
 	for {
 		select {
-		case msg := <-c.sends:
+		case frame := <-c.sends:
 			c.mu.Lock()
 			conn := c.conn
 			c.mu.Unlock()
-			_ = c.writeJSON(conn, msg)
+			_ = c.writeFrame(conn, frame)
 
 		case <-c.done:
 			return
@@ -449,86 +514,197 @@ func (c *Client) pingLoop() {
 	for {
 		select {
 		case <-t.C:
-			c.sends <- wireMessage{Type: msgTypePing}
+			c.sends <- controlFrame(controlMessage{Type: msgTypePing})
 		case <-c.done:
 			return
 		}
 	}
 }
 
-// dispatch routes an incoming server frame to the appropriate handler.
-func (c *Client) dispatch(frame wireMessage) {
+// dispatch routes an incoming server control frame to the appropriate handler.
+// welcome is handled inline by dial(), never here.
+func (c *Client) dispatch(frame controlMessage) {
 	switch frame.Type {
-	case msgTypeMessage:
-		c.handleIncomingMessage(frame)
-
 	case msgTypePairCode:
-		// Response to pair_request: give the code to the waiter
-		c.pairWaitersMu.Lock()
-		ch, ok := c.pairWaiters["__request__"]
-		if ok {
-			delete(c.pairWaiters, "__request__")
-		}
-		c.pairWaitersMu.Unlock()
-		if ok {
-			ch <- PairResult{Code: frame.Code, ExpiresIn: frame.ExpiresIn}
-		}
-
+		c.handlePairCode(frame)
 	case msgTypePairComplete:
-		pubKey, _ := publicKeyFromBase64(frame.PeerPublicKey)
-		result := PairResult{PeerID: frame.PeerID, PeerPublicKey: pubKey}
-
-		c.pairWaitersMu.Lock()
-		ch, ok := c.pairWaiters[frame.Code]
-		if ok {
-			delete(c.pairWaiters, frame.Code)
-		}
-		c.pairWaitersMu.Unlock()
-
-		if ok {
-			peer := &Peer{ID: frame.PeerID, PublicKey: pubKey}
-			c.addPeer(peer)
-			ch <- result
-		}
-
+		c.handlePairComplete(frame)
+	case msgTypePeerStatus:
+		c.handlePeerStatus(frame)
 	case msgTypeError:
-		// Try to deliver errors to any waiting pair channels
-		c.pairWaitersMu.Lock()
-		for code, ch := range c.pairWaiters {
-			ch <- PairResult{Error: fmt.Errorf("%s: %s", frame.Code, frame.Message)}
-			delete(c.pairWaiters, code)
-		}
-		c.pairWaitersMu.Unlock()
+		c.handleError(frame)
+	case msgTypePong:
+		// keepalive, nothing to do
+	default:
+		// Unknown type: ignored per §5's forward-compatibility rule.
 	}
 }
 
-// handleIncomingMessage decrypts a message and delivers it to the Messages() channel.
-func (c *Client) handleIncomingMessage(frame wireMessage) {
-	peer, ok := c.findPeer(frame.From)
+func (c *Client) handlePairCode(frame controlMessage) {
+	waiter, ok := c.takePairWaiter("__request__")
+	if ok {
+		waiter.ch <- PairResult{Code: frame.Code, ExpiresIn: frame.ExpiresIn}
+	}
+}
+
+// handlePairComplete implements §5.3: link the peer, and if we're the accepting
+// device, start the Noise handshake as initiator immediately.
+func (c *Client) handlePairComplete(frame controlMessage) {
+	waiter, ok := c.takePairWaiter(frame.Code)
 	if !ok {
-		return // unknown sender, drop
-	}
-
-	ciphertext, err := decodeBase64(frame.Payload)
-	if err != nil {
-		return
-	}
-	nonceBytes, err := decodeBase64(frame.Nonce)
-	if err != nil {
 		return
 	}
 
-	plaintext, err := c.opts.PrivateKey.Decrypt(ciphertext, nonceBytes, peer.PublicKey)
+	peer := newPeerConn(frame.PeerID, frame.PeerStaticKey)
+	peer.setFirstPairWaiter(waiter.ch)
+	c.setPeerConn(frame.PeerID, peer)
+
+	if !waiter.weAreAcceptor {
+		return // we requested; wait for the accepting device's incoming msg1
+	}
+
+	msg1, err := peer.startAsInitiator(c.opts.PrivateKey)
 	if err != nil {
-		return // decryption failed, drop
+		if w := peer.takeFirstPairWaiter(); w != nil {
+			w <- PairResult{Error: fmt.Errorf("relayly: starting handshake: %w", err)}
+		}
+		return
+	}
+	c.enqueueBinary(envelopeHandshake, msg1)
+}
+
+// handlePeerStatus implements §6's reconnect rule: whichever side's device_id is
+// lexicographically smaller re-initiates a fresh handshake whenever the peer comes
+// online (including this device's own reconnect, since welcome reports the peer's
+// state to us too).
+func (c *Client) handlePeerStatus(frame controlMessage) {
+	online := frame.Online != nil && *frame.Online
+	if c.opts.OnPeerStatus != nil {
+		c.opts.OnPeerStatus(frame.PeerID, online)
+	}
+	if !online {
+		return
 	}
 
-	msg := Message{
-		From:      frame.From,
-		Payload:   plaintext,
-		Timestamp: frame.Timestamp,
+	peer := c.getPeerConn(frame.PeerID)
+	if peer == nil {
+		return
+	}
+	if c.opts.DeviceID >= frame.PeerID {
+		return // larger ID: wait for the incoming msg1
 	}
 
+	msg1, err := peer.startRekeyAsInitiator(c.opts.PrivateKey)
+	if err != nil {
+		return // best-effort; a future peer_status or AEAD failure can retry
+	}
+	c.enqueueBinary(envelopeHandshake, msg1)
+}
+
+func (c *Client) handleError(frame controlMessage) {
+	err := errForCode(frame.Code, frame.Message)
+	c.pairWaitersMu.Lock()
+	for code, waiter := range c.pairWaiters {
+		waiter.ch <- PairResult{Error: err}
+		delete(c.pairWaiters, code)
+	}
+	c.pairWaitersMu.Unlock()
+}
+
+// handleHandshakeEnvelope feeds one received Noise handshake message to the sole
+// linked peer's connection and resolves it once (and if) it completes.
+func (c *Client) handleHandshakeEnvelope(payload []byte) {
+	peer := c.getSolePeer()
+	if peer == nil {
+		return
+	}
+
+	reply, completed, wasPending, err := peer.handleHandshakeEnvelope(c.opts.PrivateKey, payload)
+	if reply != nil {
+		c.enqueueBinary(envelopeHandshake, reply)
+	}
+	if completed == nil {
+		return
+	}
+	c.resolveHandshake(peer, completed, wasPending, err)
+}
+
+// resolveHandshake runs once, exactly when a Noise handshake attempt finishes
+// (successfully or not): it applies §7's client-side pin (the real boundary) and
+// server-announced-key cross-check, promotes or abandons a rekey attempt per §6's
+// make-before-break rule, notifies a first-pairing waiter if one is registered, and
+// fires OnReady.
+func (c *Client) resolveHandshake(peer *peerConn, session *noiseSession, wasPending bool, hsErr error) {
+	var result PairResult
+	result.PeerID = peer.id
+
+	switch {
+	case hsErr != nil:
+		result.Error = fmt.Errorf("relayly: handshake failed: %w", hsErr)
+	default:
+		pub, verr := c.verifyAndPin(peer, session)
+		if verr != nil {
+			session.mu.Lock()
+			session.status = statusFailed
+			session.err = verr
+			session.mu.Unlock()
+			result.Error = verr
+		} else {
+			result.PeerPublicKey = pub
+		}
+	}
+
+	if wasPending {
+		if result.Error != nil {
+			peer.abandon(session) // existing active session, if any, is untouched
+			return
+		}
+		peer.promote(session)
+	}
+
+	if waiter := peer.takeFirstPairWaiter(); waiter != nil {
+		waiter <- result
+	}
+	if result.Error == nil && c.opts.OnReady != nil {
+		c.opts.OnReady(peer.id)
+	}
+}
+
+// verifyAndPin implements §7 in full: the client-side pin (§7.1, the real security
+// boundary) and the server-announced-key cross-check (§7.2, defense in depth).
+func (c *Client) verifyAndPin(peer *peerConn, session *noiseSession) (PublicKey, error) {
+	session.mu.Lock()
+	authenticated := session.peerStatic
+	session.mu.Unlock()
+	authenticatedB64 := encodeBase64(authenticated)
+
+	if err := c.peerStore.PinOrVerify(peer.id, authenticatedB64); err != nil {
+		return PublicKey{}, fmt.Errorf("%w (peer %s)", err, peer.id)
+	}
+	if peer.announcedStaticKey != "" && peer.announcedStaticKey != authenticatedB64 {
+		return PublicKey{}, fmt.Errorf("%w: server-announced key for peer %s does not match the authenticated handshake",
+			ErrKeyMismatch, peer.id)
+	}
+
+	pub, err := publicKeyFromBase64(authenticatedB64)
+	if err != nil {
+		return PublicKey{}, fmt.Errorf("relayly: invalid authenticated peer key: %w", err)
+	}
+	return pub, nil
+}
+
+func (c *Client) handleTransportEnvelope(ciphertext []byte) {
+	peer := c.getSolePeer()
+	if peer == nil {
+		return
+	}
+
+	plaintext, err := peer.recv(ciphertext)
+	if err != nil {
+		return // not ready, or decryption failed — drop silently
+	}
+
+	msg := Message{From: peer.id, Payload: plaintext, Timestamp: time.Now()}
 	select {
 	case c.messages <- msg:
 	default:
@@ -536,38 +712,39 @@ func (c *Client) handleIncomingMessage(frame wireMessage) {
 	}
 }
 
+func (c *Client) enqueueBinary(kind byte, payload []byte) {
+	select {
+	case c.sends <- outFrame{kind: websocket.BinaryMessage, data: encodeEnvelope(kind, payload)}:
+	case <-c.done:
+	}
+}
+
 func (c *Client) writeJSON(conn *websocket.Conn, v any) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
 	conn.SetWriteDeadline(time.Now().Add(DefaultWriteTimeout))
-	return conn.WriteJSON(v)
+	return conn.WriteMessage(websocket.TextMessage, data)
+}
+
+func (c *Client) writeFrame(conn *websocket.Conn, frame outFrame) error {
+	conn.SetWriteDeadline(time.Now().Add(DefaultWriteTimeout))
+	return conn.WriteMessage(frame.kind, frame.data)
+}
+
+func (c *Client) takePairWaiter(key string) (pairWaiter, bool) {
+	c.pairWaitersMu.Lock()
+	defer c.pairWaitersMu.Unlock()
+	w, ok := c.pairWaiters[key]
+	if ok {
+		delete(c.pairWaiters, key)
+	}
+	return w, ok
 }
 
 func (c *Client) removePairWaiter(key string) {
 	c.pairWaitersMu.Lock()
 	delete(c.pairWaiters, key)
 	c.pairWaitersMu.Unlock()
-}
-
-// addPeer adds or replaces a peer in the client's peer list.
-func (c *Client) addPeer(p *Peer) {
-	c.peersMu.Lock()
-	defer c.peersMu.Unlock()
-	for i, existing := range c.peers {
-		if existing.ID == p.ID {
-			c.peers[i] = *p
-			return
-		}
-	}
-	c.peers = append(c.peers, *p)
-}
-
-// findPeer looks up a peer by device ID.
-func (c *Client) findPeer(id string) (Peer, bool) {
-	c.peersMu.RLock()
-	defer c.peersMu.RUnlock()
-	for _, p := range c.peers {
-		if p.ID == id {
-			return p, true
-		}
-	}
-	return Peer{}, false
 }

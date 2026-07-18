@@ -10,14 +10,15 @@ import (
 
 // Device represents a registered device in the database.
 type Device struct {
-	ID         string
-	Name       string
-	PublicKey  string
-	PairToken  string
-	PairedWith *string    // nil if not yet paired
-	CreatedAt  time.Time
-	LastSeen   *time.Time
-	ExpiresAt  *time.Time // nil means no expiry (existing rows)
+	ID          string
+	Name        string
+	PublicKey   string // legacy: the old client<->server Noise static key, unused since Protocol v1
+	DeviceToken string
+	StaticKey   string  // announced E2E identity key (docs/PROTOCOL.md §7.2), empty until announce_key
+	PairedWith  *string // nil if not yet paired
+	CreatedAt   time.Time
+	LastSeen    *time.Time
+	ExpiresAt   *time.Time // nil means no expiry (existing rows)
 }
 
 // PairedWithShort returns the first 8 characters of the paired device ID, or empty string.
@@ -37,12 +38,18 @@ var ErrNotFound = errors.New("device not found")
 // ErrAlreadyPaired is returned when trying to pair an already-paired device.
 var ErrAlreadyPaired = errors.New("device already paired")
 
+// ErrStaticKeyMismatch is returned by SetStaticKeyIfUnset when a device announces a
+// static key that differs from the one already locked in (docs/PROTOCOL.md §7.2).
+var ErrStaticKeyMismatch = errors.New("static key mismatch")
+
+const deviceColumns = `id, name, public_key, device_token, static_key, paired_with, created_at, last_seen, expires_at`
+
 // CreateDevice inserts a new device record.
 func (db *DB) CreateDevice(d *Device) error {
 	_, err := db.Exec(`
-		INSERT INTO devices (id, name, public_key, pair_token, created_at, expires_at)
+		INSERT INTO devices (id, name, public_key, device_token, created_at, expires_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		d.ID, d.Name, d.PublicKey, d.PairToken, d.CreatedAt, d.ExpiresAt,
+		d.ID, d.Name, d.PublicKey, d.DeviceToken, d.CreatedAt, d.ExpiresAt,
 	)
 	if err != nil {
 		return fmt.Errorf("CreateDevice: %w", err)
@@ -50,27 +57,23 @@ func (db *DB) CreateDevice(d *Device) error {
 	return nil
 }
 
-// GetDeviceByToken retrieves a device by its pairing token.
-func (db *DB) GetDeviceByToken(token string) (*Device, error) {
+// GetDeviceByDeviceToken retrieves a device by its device token.
+func (db *DB) GetDeviceByDeviceToken(token string) (*Device, error) {
 	return db.scanDevice(
-		db.QueryRow(`SELECT id, name, public_key, pair_token, paired_with, created_at, last_seen, expires_at
-			FROM devices WHERE pair_token = ?`, token),
+		db.QueryRow(`SELECT `+deviceColumns+` FROM devices WHERE device_token = ?`, token),
 	)
 }
 
 // GetDeviceByID retrieves a device by its UUID.
 func (db *DB) GetDeviceByID(id string) (*Device, error) {
 	return db.scanDevice(
-		db.QueryRow(`SELECT id, name, public_key, pair_token, paired_with, created_at, last_seen, expires_at
-			FROM devices WHERE id = ?`, id),
+		db.QueryRow(`SELECT `+deviceColumns+` FROM devices WHERE id = ?`, id),
 	)
 }
 
 // ListDevices returns all registered devices ordered by creation time.
 func (db *DB) ListDevices() ([]*Device, error) {
-	rows, err := db.Query(`
-		SELECT id, name, public_key, pair_token, paired_with, created_at, last_seen, expires_at
-		FROM devices ORDER BY created_at`)
+	rows, err := db.Query(`SELECT ` + deviceColumns + ` FROM devices ORDER BY created_at`)
 	if err != nil {
 		return nil, fmt.Errorf("ListDevices: %w", err)
 	}
@@ -121,10 +124,43 @@ func (db *DB) PairDevices(idA, idB string) error {
 	return tx.Commit()
 }
 
-// UpdatePublicKey sets the Noise public key for a device after handshake.
+// UpdatePublicKey sets the legacy Noise public key for a device. Kept only so migration
+// v3 has something to backfill static_key from; nothing writes to it going forward.
 func (db *DB) UpdatePublicKey(id, pubKey string) error {
 	_, err := db.Exec(`UPDATE devices SET public_key = ? WHERE id = ?`, pubKey, id)
 	return err
+}
+
+// SetStaticKeyIfUnset implements docs/PROTOCOL.md §7.2's server-side key locking: the
+// first announce_key for a device is persisted; a later announcement with a different
+// key is rejected with ErrStaticKeyMismatch instead of being applied.
+func (db *DB) SetStaticKeyIfUnset(id, staticKey string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var existing sql.NullString
+	row := tx.QueryRow(`SELECT static_key FROM devices WHERE id = ?`, id)
+	if err := row.Scan(&existing); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	if existing.Valid && existing.String != "" {
+		if existing.String != staticKey {
+			return ErrStaticKeyMismatch
+		}
+		return tx.Commit() // already locked to this exact key, nothing to do
+	}
+
+	if _, err := tx.Exec(`UPDATE devices SET static_key = ? WHERE id = ?`, staticKey, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // TouchLastSeen updates the last_seen timestamp for a device.
@@ -148,12 +184,13 @@ func (db *DB) scanDevice(scanner interface {
 	Scan(...any) error
 }) (*Device, error) {
 	d := &Device{}
+	var staticKey sql.NullString
 	var paired sql.NullString
 	var lastSeen sql.NullTime
 	var expiresAt sql.NullTime
 
 	err := scanner.Scan(
-		&d.ID, &d.Name, &d.PublicKey, &d.PairToken,
+		&d.ID, &d.Name, &d.PublicKey, &d.DeviceToken, &staticKey,
 		&paired, &d.CreatedAt, &lastSeen, &expiresAt,
 	)
 	if err != nil {
@@ -163,6 +200,9 @@ func (db *DB) scanDevice(scanner interface {
 		return nil, fmt.Errorf("scanning device: %w", err)
 	}
 
+	if staticKey.Valid {
+		d.StaticKey = staticKey.String
+	}
 	if paired.Valid {
 		d.PairedWith = &paired.String
 	}

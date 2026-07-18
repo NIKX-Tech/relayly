@@ -1,7 +1,6 @@
 package relayly
 
 import (
-	"bytes"
 	"testing"
 )
 
@@ -18,33 +17,6 @@ func TestKeyGeneration(t *testing.T) {
 
 	if len(pub.raw) != 32 {
 		t.Errorf("expected 32-byte public key, got %d", len(pub.raw))
-	}
-}
-
-func TestEncryptionDecryption(t *testing.T) {
-	// Generate keys for Alice and Bob
-	aliceKey, _ := GenerateKey()
-	alicePub, _ := aliceKey.PublicKey()
-
-	bobKey, _ := GenerateKey()
-	bobPub, _ := bobKey.PublicKey()
-
-	plaintext := []byte("hello bob, this is alice")
-
-	// Alice encrypts for Bob
-	ciphertext, nonce, err := aliceKey.Encrypt(plaintext, bobPub)
-	if err != nil {
-		t.Fatalf("encryption failed: %v", err)
-	}
-
-	// Bob decrypts from Alice
-	decrypted, err := bobKey.Decrypt(ciphertext, nonce[:], alicePub)
-	if err != nil {
-		t.Fatalf("decryption failed: %v", err)
-	}
-
-	if !bytes.Equal(plaintext, decrypted) {
-		t.Errorf("decrypted content does not match plaintext.\nGot:  %s\nWant: %s", decrypted, plaintext)
 	}
 }
 

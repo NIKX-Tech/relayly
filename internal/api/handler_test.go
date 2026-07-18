@@ -25,9 +25,69 @@ func newTestHandler(t *testing.T) http.Handler {
 	return api.New(db, hub, zap.NewNop(), "test")
 }
 
-// ── POST /api/v1/pair ─────────────────────────────────────────────────────────
+// ── POST /api/v1/devices ──────────────────────────────────────────────────────
 
-func TestHandlePair_OK(t *testing.T) {
+func TestHandleCreateDevice_OK(t *testing.T) {
+	h := newTestHandler(t)
+
+	body := bytes.NewBufferString(`{"name":"test-device"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/devices", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Deprecation"); got != "" {
+		t.Errorf("primary endpoint should not be marked deprecated, got Deprecation: %q", got)
+	}
+
+	var resp struct {
+		DeviceID    string `json:"device_id"`
+		DeviceToken string `json:"device_token"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.DeviceID == "" {
+		t.Error("expected non-empty device_id")
+	}
+	if resp.DeviceToken == "" {
+		t.Error("expected non-empty device_token")
+	}
+}
+
+func TestHandleCreateDevice_MissingName(t *testing.T) {
+	h := newTestHandler(t)
+
+	body := bytes.NewBufferString(`{"name":""}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/devices", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestHandleCreateDevice_BadJSON(t *testing.T) {
+	h := newTestHandler(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/devices", bytes.NewBufferString(`not-json`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+// ── POST /api/v1/pair (deprecated alias, docs/PROTOCOL.md §2) ────────────────
+
+func TestHandleCreateDevice_DeprecatedAlias(t *testing.T) {
 	h := newTestHandler(t)
 
 	body := bytes.NewBufferString(`{"name":"test-device"}`)
@@ -39,46 +99,19 @@ func TestHandlePair_OK(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
+	if got := rr.Header().Get("Deprecation"); got != "true" {
+		t.Errorf(`expected Deprecation: "true", got %q`, got)
+	}
 
+	// The alias returns the same, new field name — not the old pair_token.
 	var resp struct {
-		DeviceID  string `json:"device_id"`
-		PairToken string `json:"pair_token"`
+		DeviceToken string `json:"device_token"`
 	}
 	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.DeviceID == "" {
-		t.Error("expected non-empty device_id")
-	}
-	if resp.PairToken == "" {
-		t.Error("expected non-empty pair_token")
-	}
-}
-
-func TestHandlePair_MissingName(t *testing.T) {
-	h := newTestHandler(t)
-
-	body := bytes.NewBufferString(`{"name":""}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/pair", body)
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
-	}
-}
-
-func TestHandlePair_BadJSON(t *testing.T) {
-	h := newTestHandler(t)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/pair", bytes.NewBufferString(`not-json`))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
+	if resp.DeviceToken == "" {
+		t.Error("expected non-empty device_token from the deprecated alias too")
 	}
 }
 
@@ -104,12 +137,12 @@ func TestHandleListDevices_Empty(t *testing.T) {
 	}
 }
 
-func TestHandleListDevices_AfterPair(t *testing.T) {
+func TestHandleListDevices_AfterCreate(t *testing.T) {
 	h := newTestHandler(t)
 
 	// Register a device first
 	body := bytes.NewBufferString(`{"name":"my-device"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/pair", body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/devices", body)
 	req.Header.Set("Content-Type", "application/json")
 	h.ServeHTTP(httptest.NewRecorder(), req)
 
@@ -178,7 +211,7 @@ func TestCORSHeaders(t *testing.T) {
 func TestCORSPreflight(t *testing.T) {
 	h := newTestHandler(t)
 
-	req := httptest.NewRequest(http.MethodOptions, "/api/v1/pair", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/v1/devices", nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 

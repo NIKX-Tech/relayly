@@ -1,26 +1,27 @@
 use std::path::Path;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
-use crypto_box::{
-    aead::{Aead, AeadCore, OsRng},
-    PublicKey as CBoxPublicKey, SalsaBox, SecretKey,
-};
+use x25519_dalek::{PublicKey as XPublicKey, StaticSecret};
 
 use crate::Error;
 
 #[derive(Clone, Debug)]
-pub struct PublicKey(pub(crate) CBoxPublicKey);
+pub struct PublicKey(pub(crate) XPublicKey);
 
 #[derive(Clone)]
-pub struct PrivateKey(SecretKey);
+pub struct PrivateKey(StaticSecret);
 
 impl PrivateKey {
     pub fn generate() -> Self {
-        Self(SecretKey::generate(&mut OsRng))
+        Self(StaticSecret::random())
     }
 
     pub fn public_key(&self) -> PublicKey {
-        PublicKey(self.0.public_key())
+        PublicKey(XPublicKey::from(&self.0))
+    }
+
+    pub fn to_bytes(&self) -> [u8; 32] {
+        self.0.to_bytes()
     }
 
     pub fn to_base64(&self) -> String {
@@ -32,7 +33,7 @@ impl PrivateKey {
         let arr: [u8; 32] = raw
             .try_into()
             .map_err(|_| Error::Crypto("private key must be 32 bytes".into()))?;
-        Ok(Self(SecretKey::from(arr)))
+        Ok(Self(StaticSecret::from(arr)))
     }
 
     pub fn save_to_file(&self, path: &Path) -> Result<(), Error> {
@@ -61,37 +62,33 @@ impl PrivateKey {
         key.save_to_file(path)?;
         Ok(key)
     }
-
-    pub fn encrypt(&self, plaintext: &[u8], recipient: &PublicKey) -> Result<(Vec<u8>, [u8; 24]), Error> {
-        let nonce = SalsaBox::generate_nonce(&mut OsRng);
-        let b = SalsaBox::new(&recipient.0, &self.0);
-        let ct = b.encrypt(&nonce, plaintext).map_err(|e| Error::Crypto(e.to_string()))?;
-        let mut nonce_arr = [0u8; 24];
-        nonce_arr.copy_from_slice(nonce.as_ref());
-        Ok((ct, nonce_arr))
-    }
-
-    pub fn decrypt(&self, ciphertext: &[u8], nonce_bytes: &[u8], sender: &PublicKey) -> Result<Vec<u8>, Error> {
-        let nonce_arr: [u8; 24] = nonce_bytes
-            .try_into()
-            .map_err(|_| Error::Crypto("nonce must be 24 bytes".into()))?;
-        let b = SalsaBox::new(&sender.0, &self.0);
-        b.decrypt(&nonce_arr.into(), ciphertext)
-            .map_err(|e| Error::Crypto(e.to_string()))
-    }
 }
 
 impl PublicKey {
+    pub fn to_bytes(&self) -> [u8; 32] {
+        self.0.to_bytes()
+    }
+
     pub fn to_base64(&self) -> String {
         STANDARD.encode(self.0.as_bytes())
     }
 
     pub fn from_base64(s: &str) -> Result<Self, Error> {
         let raw = STANDARD.decode(s).map_err(|e| Error::Crypto(e.to_string()))?;
+        Self::from_bytes(&raw)
+    }
+
+    pub fn from_bytes(raw: &[u8]) -> Result<Self, Error> {
         let arr: [u8; 32] = raw
             .try_into()
             .map_err(|_| Error::Crypto("public key must be 32 bytes".into()))?;
-        Ok(Self(CBoxPublicKey::from(arr)))
+        Ok(Self(XPublicKey::from(arr)))
+    }
+}
+
+impl PartialEq for PublicKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_bytes() == other.0.as_bytes()
     }
 }
 

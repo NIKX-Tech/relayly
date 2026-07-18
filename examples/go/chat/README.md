@@ -1,10 +1,10 @@
 # Chat Demo
 
-> Two devices. One setup command. Fully encrypted. Live in under 5 minutes.
+Two devices. No setup script. Fully encrypted. Live in under a minute.
 
 **Device A** → `[Noise-encrypted frame]` → **Relayly relay** → `[Noise-encrypted frame]` → **Device B**
 
-> The relay only ever forwards opaque bytes — it never sees your plaintext.
+> The relay only ever forwards opaque bytes, it never sees your plaintext.
 
 ---
 
@@ -17,7 +17,7 @@
 
 ## Quickstart
 
-### Step 1 — Start the relay server
+### Step 1: start the relay server
 
 From the **repository root**:
 
@@ -25,39 +25,41 @@ From the **repository root**:
 docker compose up --build -d
 ```
 
-### Step 2 — Register the two devices
+### Step 2: open two terminals, both in `examples/go/chat`
+
+#### **Terminal 1**
 
 ```bash
-cd examples/go/chat
-chmod +x setup.sh && ./setup.sh
+go run .
 ```
 
-The script registers `chat-device-a` and `chat-device-b` inside the running
-container, links them together, and prints the exact commands for both devices.
+This registers a device (saving its credentials to `~/.relayly/chat-device.json` for
+next time), connects, and requests a pairing code:
 
-### Step 3 — Open two terminals
+```
+╔════════════════════════════════════╗
+║  Pairing code:  483921              ║
+╚════════════════════════════════════╝
+Run in your other terminal:
+  go run . --server ws://localhost:8080 --code 483921
 
-**Important:** You must run these commands from the `examples/go/chat` directory. Paste the commands printed by `setup.sh` into two separate terminals.
+Waiting for the other device …
+```
 
-#### **Terminal 1 · Device A**
+#### **Terminal 2**
+
+Paste the command Terminal 1 printed:
+
 ```bash
-# Make sure you are in examples/go/chat
-go run . --role=a --device-id=<ID_A> --token=<TOKEN_A>
+go run . --server ws://localhost:8080 --code 483921
 ```
 
-#### **Terminal 2 · Device B**
-```bash
-# Make sure you are in examples/go/chat
-go run . --role=b --device-id=<ID_B> --token=<TOKEN_B>
-```
-
-Both devices connect, complete the Noise XX handshake, and drop into the chat
-prompt:
+Both terminals complete the Noise XX handshake and drop into the chat prompt:
 
 ```
 🔌  Connecting to ws://localhost:8080 …
 ✅  Connected.
-🔐  Noise XX handshake complete — transport is encrypted.
+🔐  Noise XX handshake complete, paired with <peer-id>. Transport is encrypted.
 
 💬  Chat is live! Type a message and press Enter.
     Type /quit to exit.
@@ -65,7 +67,7 @@ prompt:
 >
 ```
 
-### Step 4 — Chat
+### Step 3: chat
 
 Type in either window and press **Enter**:
 
@@ -83,35 +85,32 @@ Type `/quit` or press `Ctrl-C` to exit.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--device-id` | *(required)* | Device ID printed by `setup.sh` |
-| `--token` | *(required)* | Token printed by `setup.sh` |
 | `--server` | `ws://localhost:8080` | Relay server WebSocket URL |
-| `--role` | device ID | Label shown in the prompt |
+| `--code` | *(none)* | Pairing code from the other terminal. Omit to generate a new one instead. |
 
 ---
 
 ## How the encryption works
 
-The relay server **never sees plaintext** — here's why:
+The relay server **never sees plaintext**, here's why:
 
-1. **Registration** — `setup.sh` calls `relayly pair` inside the container to
-   create each device in the DB with a unique token. Only the token owner can
-   connect as that device.
+1. **Registration**: the first run of `go run .` calls `POST /api/v1/devices` to
+   register itself and saves the returned credentials to
+   `~/.relayly/chat-device.json`, reusing them on later runs.
 
-2. **Noise XX handshake** — after the WebSocket connection is established, the
-   client performs a three-message
-   [Noise XX](https://noiseprotocol.org/noise.html#handshake-patterns)
-   exchange with the server
-   (`Noise_XX_25519_ChaChaPoly_BLAKE2s`). Both sides authenticate each
-   other's static public key. No secrets cross the wire in cleartext.
+2. **Pairing**: the two devices exchange a short-lived 6-digit code through the
+   relay (`RequestPairCode`/`AcceptPair`), then run a three-message
+   [Noise XX](https://noiseprotocol.org/noise.html#handshake-patterns) handshake
+   directly with each other (`Noise_XX_25519_ChaChaPoly_BLAKE2s`). The relay
+   forwards the handshake bytes but is not a party to it.
 
-3. **Encrypted transport** — every message is encrypted with the Noise
-   transport cipher state before it's written to the WebSocket. The relay
-   server acts as a dumb forwarder: it reads the ciphertext frame and
-   delivers it to the linked device. It has no key material to decrypt it.
+3. **Encrypted transport**: every message is encrypted with the Noise transport
+   cipher before `sdk/go` writes it to the WebSocket. The relay server acts as a
+   dumb forwarder: it reads the ciphertext frame and delivers it to the linked
+   device. It has no key material to decrypt it.
 
-4. **Blind relay** — even a fully compromised server cannot read your
-   messages because it never held the symmetric session keys.
+4. **Blind relay**: even a fully compromised server cannot read your messages
+   because it never held the session keys.
 
-> **Demo note:** Each run generates a fresh ephemeral Noise keypair. A real
-> application would persist the device's static keypair across restarts.
+> **Demo note:** each device's identity key persists at `~/.relayly/chat-device.key`
+> across restarts, matching every other official SDK's default key-file location.

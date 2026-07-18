@@ -6,11 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/NIKX-Tech/relayly/internal/config"
 	"github.com/NIKX-Tech/relayly/internal/database"
-	"github.com/NIKX-Tech/relayly/internal/noise"
 	"github.com/NIKX-Tech/relayly/pkg/version"
+	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
 
@@ -23,10 +22,10 @@ var upgrader = websocket.Upgrader{
 }
 
 // Handler returns an http.HandlerFunc that:
-//  1. Authenticates the device via ?device_id=&token= query params
+//  1. Authenticates the device via ?device_id=&token= query params (docs/PROTOCOL.md §3)
 //  2. Upgrades the connection to WebSocket
-//  3. Registers the client with the Hub and starts I/O pumps
-func Handler(hub *Hub, db *database.DB, cfg *config.Config, log *zap.Logger, serverKey *noise.Keypair) http.HandlerFunc {
+//  3. Registers the client with the Hub, sends welcome, and starts I/O pumps
+func Handler(hub *Hub, db *database.DB, cfg *config.Config, log *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		deviceID := q.Get("device_id")
@@ -44,7 +43,7 @@ func Handler(hub *Hub, db *database.DB, cfg *config.Config, log *zap.Logger, ser
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if device.PairToken != token {
+		if device.DeviceToken != token {
 			log.Warn("invalid token", zap.String("device_id", deviceID))
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -76,11 +75,11 @@ func Handler(hub *Hub, db *database.DB, cfg *config.Config, log *zap.Logger, ser
 			wsCfg.MaxMessageBytes,
 			wsCfg.PingInterval,
 			wsCfg.Deadline,
-			serverKey,
 			db,
 		)
 
 		hub.Register <- client
+		client.sendWelcome(device)
 
 		// Update last_seen asynchronously
 		go func() {
