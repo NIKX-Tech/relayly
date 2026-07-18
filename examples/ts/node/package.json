@@ -1,12 +1,11 @@
 {
-  "name": "relayly-echo-example",
+  "name": "relayly-node-send-example",
   "version": "0.1.0",
-  "description": "Echo server example for Relayly, pairs with a device and echoes every message back.",
+  "description": "One-shot pair-and-send example for Relayly: accept a pairing code, send a message, wait for a reply, exit.",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx index.ts",
-    "start:code": "tsx index.ts --code"
+    "start": "tsx send.ts"
   },
   "dependencies": {
     "relayly": "file:../../../sdk/ts"

@@ -13,20 +13,22 @@
  *   npx tsx index.ts --code <pair-code>
  *
  * Environment variables:
- *   RELAYLY_URL   — relay server URL (default: ws://localhost:8080)
+ *   RELAYLY_URL, relay server URL (default: ws://localhost:8080/ws)
  *
- * The device key is stored at ~/.relayly/echo.key and reused across runs.
+ * The device key is stored at ~/.relayly/echo.key, and this device's registered
+ * device_id/device_token at ~/.relayly/echo-device.json, both reused across runs.
  */
 
-import { RelaylyClient, generateKey, encodeBase64, keyPairFromPrivateKey } from 'relayly-client';
+import { RelaylyClient, generateKey, encodeBase64, keyPairFromPrivateKey } from 'relayly';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const SERVER_URL = process.env['RELAYLY_URL'] ?? 'ws://localhost:8080';
+const SERVER_URL = process.env['RELAYLY_URL'] ?? 'ws://localhost:8080/ws';
 const KEY_PATH = join(homedir(), '.relayly', 'echo.key');
+const CREDS_PATH = join(homedir(), '.relayly', 'echo-device.json');
 
 // Parse --code <value> from argv
 function parseCode(): string | undefined {
@@ -49,14 +51,52 @@ function loadOrGenerateKey(keyFile: string) {
   return kp;
 }
 
+// ─── Device registration ─────────────────────────────────────────────────────
+
+interface DeviceCreds {
+  device_id: string;
+  device_token: string;
+}
+
+/** Registers via POST /api/v1/devices the first time this runs, reusing the saved
+ * credentials afterward, the same load-or-create pattern used for the identity key. */
+async function registerOrLoadDevice(serverUrl: string, credsFile: string, name: string): Promise<DeviceCreds> {
+  if (existsSync(credsFile)) {
+    const creds = JSON.parse(readFileSync(credsFile, 'utf-8')) as DeviceCreds;
+    if (creds.device_id && creds.device_token) return creds;
+  }
+
+  const apiUrl = new URL(serverUrl);
+  apiUrl.protocol = apiUrl.protocol === 'wss:' ? 'https:' : 'http:';
+  apiUrl.pathname = '/api/v1/devices';
+  apiUrl.search = '';
+
+  const resp = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!resp.ok) throw new Error(`registering device: server returned ${resp.status}`);
+  const creds = (await resp.json()) as DeviceCreds;
+
+  const dir = dirname(credsFile);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  writeFileSync(credsFile, JSON.stringify(creds, null, 2), { mode: 0o600 });
+  return creds;
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   const pairCode = parseCode();
   const keyPair = loadOrGenerateKey(KEY_PATH);
+  const { device_id: deviceId, device_token: deviceToken } = await registerOrLoadDevice(
+    SERVER_URL,
+    CREDS_PATH,
+    'echo-node',
+  );
 
-  const deviceId = `echo-node-${process.pid}`;
-  const client = new RelaylyClient(SERVER_URL, { deviceId, keyPair });
+  const client = new RelaylyClient(SERVER_URL, { deviceId, deviceToken, keyPair });
 
   console.log(`Connecting to ${SERVER_URL} as ${deviceId}…`);
   await client.connect();

@@ -1,11 +1,11 @@
 /**
- * Node.js-only extras — import from 'relayly-client/node', never from the main
+ * Node.js-only extras, import from 'relayly/node', never from the main
  * entry point, so browser bundlers never try to resolve `node:fs`.
  *
  * @example
  * ```ts
- * import { RelaylyClient } from 'relayly-client';
- * import { FilePeerKeyStore } from 'relayly-client/node';
+ * import { RelaylyClient } from 'relayly';
+ * import { FilePeerKeyStore } from 'relayly/node';
  *
  * const client = new RelaylyClient(url, {
  *   deviceId, deviceToken, keyPair,
