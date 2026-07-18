@@ -55,6 +55,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Pairing
 
+**v1 links exactly one peer per device.** Pairing again replaces whatever was linked
+before, it doesn't add a second one alongside it. Multi-peer support is a roadmap
+item (`docs/ROADMAP.md`, v0.7). Don't build for N simultaneous peers against this
+version.
+
 Devices pair using a short 6-digit code shared out-of-band (or via QR). Both
 `accept_pair()` and `code.wait()` block until the Noise handshake actually completes
 (not just until the code exchange), so the peer they resolve with is immediately safe

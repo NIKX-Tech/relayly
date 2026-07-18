@@ -31,6 +31,8 @@ desktop, etc.) through a server you control. Encryption runs device-to-device us
 [Noise Protocol](https://noiseprotocol.org/) (`Noise_XX_25519_ChaChaPoly_BLAKE2s`); the
 relay authenticates devices and mediates pairing, but holds no key material capable of
 reading message content, see [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the exact contract.
+**Protocol v1 links exactly one peer per device.** Multi-peer fan-out is a roadmap item
+(v0.7 below), not something to build against today.
 
 > **SDK status:** the server and all five official SDKs (`sdk/go`, `sdk/ts`, `sdk/py`,
 > `sdk/rust`, `sdk/cpp`) now speak Protocol v1 and are proven interoperable by a
