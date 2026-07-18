@@ -6,9 +6,9 @@
  * (docs/tasks/02-sdks-and-interop.md), landed early since it directly de-risks this
  * PR the same way sdk/go's client_test.go does.
  *
- * Node has no global WebSocket on two of the three Node versions this repo's CI
- * matrix tests (18, 20; only 22 has it natively), so this file polyfills
- * globalThis.WebSocket with the `ws` package before importing RelaylyClient — a
+ * Node has no global WebSocket on one of the two Node versions this repo's CI
+ * matrix tests (20; only 22 has it natively), so this file polyfills
+ * globalThis.WebSocket with the `ws` package before importing RelaylyClient - a
  * test-only devDependency, not a runtime dependency of the SDK.
  */
 import { WebSocket as NodeWebSocket } from 'ws';
