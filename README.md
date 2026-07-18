@@ -145,11 +145,8 @@ git clone https://github.com/NIKX-Tech/relayly.git
 cd relayly
 docker compose up --build -d
 
-# Register your first device
-docker exec relayly /relayly pair "My Device"
-
-# Want to test it? Try the Chat Demo:
-# cd examples/go/chat && ./setup.sh
+# Want to test it? Try the Chat Demo (registers itself, no setup needed):
+# cd examples/go/chat && go run .
 ```
 
 ---
