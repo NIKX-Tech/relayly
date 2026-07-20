@@ -1,11 +1,11 @@
 /**
- * Optional React hooks for relayly-client.
+ * Optional React hooks for relayly.
  *
- * Import from 'relayly-client/react':
+ * Import from 'relayly/react':
  *
  * @example
  * ```tsx
- * import { useRelayly, usePairing } from 'relayly-client/react';
+ * import { useRelayly, usePairing } from 'relayly/react';
  *
  * function Chat({ client, peerId }: { client: RelaylyClient; peerId: string }) {
  *   const { messages, send } = useRelayly(client, peerId);

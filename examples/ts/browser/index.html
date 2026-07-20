@@ -155,7 +155,7 @@
 
   <!-- Server connection -->
   <div class="section-label">Server</div>
-  <input id="server-url" type="text" value="wss://relay.example.com" placeholder="wss://relay.example.com" />
+  <input id="server-url" type="text" value="ws://localhost:8080/ws" placeholder="ws://localhost:8080/ws" />
   <button id="btn-connect">Connect</button>
 
   <!-- Pairing -->
@@ -184,10 +184,10 @@
 </div>
 
 <script type="module">
-  // NOTE: In a real project, import from 'relayly-client' after npm install.
-  // For this demo, we load from a CDN-compatible build or local dist.
-  // Replace this URL with your actual bundle or run: npm run build in js/
-  import { RelaylyClient, generateKey, encodeBase64, keyPairFromPrivateKey } from '../../dist/index.mjs';
+  // NOTE: In a real project, import from 'relayly' after npm install.
+  // For this demo, we load from a local build of sdk/ts: run `npm run build`
+  // in sdk/ts first, which produces sdk/ts/dist/index.mjs.
+  import { RelaylyClient, generateKey, encodeBase64, keyPairFromPrivateKey } from '../../../sdk/ts/dist/index.mjs';
 
   // ─── Persistent key ────────────────────────────────────────────────────────
   const STORAGE_KEY = 'relayly_private_key';
@@ -200,6 +200,30 @@
     keyPair = generateKey();
     localStorage.setItem(STORAGE_KEY, encodeBase64(keyPair.privateKey));
     log('🔑 Generated new device key');
+  }
+
+  // ─── Device registration ───────────────────────────────────────────────────
+  // Registers via POST /api/v1/devices the first time this runs in this browser,
+  // reusing the saved credentials afterward, the same pattern as the identity key.
+  const CREDS_KEY = 'relayly_device_creds';
+  async function registerOrLoadDevice(serverUrl) {
+    const saved = localStorage.getItem(CREDS_KEY);
+    if (saved) return JSON.parse(saved);
+
+    const apiUrl = new URL(serverUrl);
+    apiUrl.protocol = apiUrl.protocol === 'wss:' ? 'https:' : 'http:';
+    apiUrl.pathname = '/api/v1/devices';
+    apiUrl.search = '';
+
+    const resp = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'browser-demo' }),
+    });
+    if (!resp.ok) throw new Error(`registering device: server returned ${resp.status}`);
+    const creds = await resp.json();
+    localStorage.setItem(CREDS_KEY, JSON.stringify(creds));
+    return creds;
   }
 
   // ─── UI refs ───────────────────────────────────────────────────────────────
@@ -220,10 +244,22 @@
     if (!serverUrl) return;
 
     btnConnect.disabled = true;
+    log('Registering device…');
+
+    let creds;
+    try {
+      creds = await registerOrLoadDevice(serverUrl);
+    } catch (err) {
+      log('✗ Registration failed: ' + err.message);
+      btnConnect.disabled = false;
+      return;
+    }
+
     log('Connecting to ' + serverUrl + '…');
 
     client = new RelaylyClient(serverUrl, {
-      deviceId: 'browser-' + Math.random().toString(36).slice(2, 7),
+      deviceId: creds.device_id,
+      deviceToken: creds.device_token,
       keyPair,
       reconnectDelayMs: 2000,
     });

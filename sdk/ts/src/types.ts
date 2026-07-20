@@ -1,5 +1,5 @@
 /**
- * Shared TypeScript types for the relayly-client library.
+ * Shared TypeScript types for the relayly library.
  */
 import type { PeerKeyStore } from './peerStore.js';
 
@@ -121,7 +121,7 @@ export interface RelaylyClientOptions {
   /**
    * Where pinned peer static keys (docs/PROTOCOL.md §7.1) are persisted. Defaults to
    * an in-memory store (does not survive a reload/restart, logs a warning). Pass a
-   * `FilePeerKeyStore` from `relayly-client/node` under Node.js for a persistent,
+   * `FilePeerKeyStore` from `relayly/node` under Node.js for a persistent,
    * cross-SDK-compatible pin.
    */
   peerStore?: PeerKeyStore;

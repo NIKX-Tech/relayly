@@ -2,17 +2,17 @@
  * Node.js example: connect, accept a pair code, send a message, listen for replies.
  *
  * Usage:
- *   npx tsx examples/node/send.ts wss://relay.example.com 483921 "Hello from Node!"
+ *   npx tsx send.ts ws://localhost:8080/ws 483921 "Hello from Node!"
  *
  * Environment variables:
- *   RELAYLY_SERVER=wss://...
+ *   RELAYLY_SERVER=ws://...
  *   RELAYLY_PAIR_CODE=483921
  */
 
-import { RelaylyClient, generateKey, encodeBase64, keyPairFromPrivateKey } from '../../src/index';
+import { RelaylyClient, generateKey, encodeBase64, keyPairFromPrivateKey } from 'relayly';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { loadConfig } from './config';
+import { loadConfig } from './config.js';
 
 // ─── Persistent key ─────────────────────────────────────────────────────────
 
@@ -31,6 +31,40 @@ function loadOrGenerateKey(keyFile: string) {
   return kp;
 }
 
+// ─── Device registration ─────────────────────────────────────────────────────
+
+interface DeviceCreds {
+  device_id: string;
+  device_token: string;
+}
+
+/** Registers via POST /api/v1/devices the first time this runs, reusing the saved
+ * credentials afterward, the same load-or-create pattern used for the identity key. */
+async function registerOrLoadDevice(serverUrl: string, credsFile: string, name: string): Promise<DeviceCreds> {
+  if (existsSync(credsFile)) {
+    const creds = JSON.parse(readFileSync(credsFile, 'utf-8')) as DeviceCreds;
+    if (creds.device_id && creds.device_token) return creds;
+  }
+
+  const apiUrl = new URL(serverUrl);
+  apiUrl.protocol = apiUrl.protocol === 'wss:' ? 'https:' : 'http:';
+  apiUrl.pathname = '/api/v1/devices';
+  apiUrl.search = '';
+
+  const resp = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!resp.ok) throw new Error(`registering device: server returned ${resp.status}`);
+  const creds = (await resp.json()) as DeviceCreds;
+
+  const dir = dirname(credsFile);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  writeFileSync(credsFile, JSON.stringify(creds, null, 2), { mode: 0o600 });
+  return creds;
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -43,9 +77,15 @@ async function main() {
   }
 
   const keyPair = loadOrGenerateKey(cfg.keyPath);
+  const { device_id: deviceId, device_token: deviceToken } = await registerOrLoadDevice(
+    cfg.serverUrl,
+    cfg.credsPath,
+    'node-send',
+  );
 
   const client = new RelaylyClient(cfg.serverUrl, {
-    deviceId: `node-${process.pid}`,
+    deviceId,
+    deviceToken,
     keyPair,
     reconnectDelayMs: 0, // no reconnect for this one-shot example
   });

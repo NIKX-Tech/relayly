@@ -4,7 +4,7 @@
  * the store is an injectable interface; the default is in-memory (works everywhere,
  * doesn't survive a reload/restart). A filesystem-backed store matching the exact
  * schema shared with every other official SDK lives in a separate entry point,
- * `relayly-client/node` (see node.ts), so browser bundlers never try to resolve
+ * `relayly/node` (see node.ts), so browser bundlers never try to resolve
  * `node:fs`.
  */
 import { PeerKeyMismatchError } from './errors.js';
@@ -44,8 +44,8 @@ export class InMemoryPeerKeyStore implements PeerKeyStore {
       warnedOnce = true;
       // eslint-disable-next-line no-console
       console.warn(
-        'relayly: using the default in-memory peer key store — pinned peer keys will ' +
-          'not survive a reload/restart. Pass Options.peerStore (see relayly-client/node ' +
+        'relayly: using the default in-memory peer key store, pinned peer keys will ' +
+          'not survive a reload/restart. Pass Options.peerStore (see relayly/node ' +
           'for a filesystem-backed store) for a persistent pin.',
       );
     }
