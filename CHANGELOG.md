@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.2.0...relayly-v0.6.0) (2026-07-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* the wire protocol changed (see docs/PROTOCOL.md and docs/rfc/000-protocol-reconciliation.md). A device on the old protocol cannot talk to a device on the new one; all paired devices need to upgrade together.
+
+### Features
+
+* add live chat demo and fix relay transport encryption ([3246d96](https://github.com/NIKX-Tech/relayly/commit/3246d96d5f6201a193ff9e8d02f7b1df561c2842))
+* add pairing expiry, rate limiting, REST API, and new examples ([e03bea5](https://github.com/NIKX-Tech/relayly/commit/e03bea52fbfa6abbeffa333f06e7df577c2b5597))
+* add Python SDK and Go SDK auto-reconnect for v0.3.0 ([7f1662c](https://github.com/NIKX-Tech/relayly/commit/7f1662c97eaccf625a4159845bcff896cff2acd1))
+* add Rust SDK, fix duplicate Go badge, update CHANGELOG and README for v0.3.0 ([6cfc628](https://github.com/NIKX-Tech/relayly/commit/6cfc628c697085cf4fd2840fea92c30f5ee3918e))
+* fix admin favicon, add API tests, and cut v0.3.0 changelog ([263a02b](https://github.com/NIKX-Tech/relayly/commit/263a02b349531a613fc6ee22dbd82b39bd65032c))
+* Protocol v1 across the server and all five official SDKs ([dbb005d](https://github.com/NIKX-Tech/relayly/commit/dbb005db14055cc6d4b3171304aceb09ae2d7f0f))
+* rebrand admin UI with logo, polished layout, and page-routing fix ([94d1a47](https://github.com/NIKX-Tech/relayly/commit/94d1a479db9386d38ee6112d5be468875985e55b))
+* SDK expansion — Go reconnect, Python, Rust, and TypeScript SDKs for v0.3.0 ([a8c8ce9](https://github.com/NIKX-Tech/relayly/commit/a8c8ce9bf9868f027a4224f3d5f7f8058d102f3f))
+
+
+### Bug Fixes
+
+* TypeScript examples were broken, and the SDK still said relayly-client ([#81](https://github.com/NIKX-Tech/relayly/issues/81)) ([9c7436b](https://github.com/NIKX-Tech/relayly/commit/9c7436b9dd6c0fef9bc412aa7ed525b962566689))
+* update readme badges ([c636d6e](https://github.com/NIKX-Tech/relayly/commit/c636d6e7adf98d552329afa2bff50293b4fe1c7d))
+* update the README tagline to match the protocol-first framing ([b84a61f](https://github.com/NIKX-Tech/relayly/commit/b84a61fd317104605f59678d02bed9e46fa446d1))
+* use to_bytes() instead of as_bytes() on SecretKey in Rust SDK ([9ab78e7](https://github.com/NIKX-Tech/relayly/commit/9ab78e7298a5fbbbfe134e59575e6672188bd2a6))
+
 ## [Unreleased] - sdk/cpp: the fifth official SDK
 
 Closes out `docs/tasks/03-cpp-sdk.md`, the last item from the original v0.6 scoping —
