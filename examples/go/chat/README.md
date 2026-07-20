@@ -41,7 +41,7 @@ next time), connects, and requests a pairing code:
 ║  Pairing code:  483921              ║
 ╚════════════════════════════════════╝
 Run in your other terminal:
-  go run . --server ws://localhost:8080 --code 483921
+  go run . --server ws://localhost:8080/ws --code 483921
 
 Waiting for the other device …
 ```
@@ -51,13 +51,13 @@ Waiting for the other device …
 Paste the command Terminal 1 printed:
 
 ```bash
-go run . --server ws://localhost:8080 --code 483921
+go run . --server ws://localhost:8080/ws --code 483921
 ```
 
 Both terminals complete the Noise XX handshake and drop into the chat prompt:
 
 ```
-🔌  Connecting to ws://localhost:8080 …
+🔌  Connecting to ws://localhost:8080/ws …
 ✅  Connected.
 🔐  Noise XX handshake complete, paired with <peer-id>. Transport is encrypted.
 
@@ -85,7 +85,7 @@ Type `/quit` or press `Ctrl-C` to exit.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--server` | `ws://localhost:8080` | Relay server WebSocket URL |
+| `--server` | `ws://localhost:8080/ws` | Relay server WebSocket URL |
 | `--code` | *(none)* | Pairing code from the other terminal. Omit to generate a new one instead. |
 
 ---

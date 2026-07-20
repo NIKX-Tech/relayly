@@ -3,7 +3,7 @@
  *
  * @example
  * ```ts
- * import { RelaylyClient, generateKey } from 'relayly-client';
+ * import { RelaylyClient, generateKey } from 'relayly';
  *
  * const keyPair = generateKey();
  * const client = new RelaylyClient('wss://relay.example.com/ws', {

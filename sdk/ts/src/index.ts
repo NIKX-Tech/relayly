@@ -1,16 +1,16 @@
 /**
- * relayly-client — Public API
+ * relayly, Public API
  *
  * Main exports for browser, Node.js, and React Native.
  *
  * @example
  * ```ts
- * import { RelaylyClient, generateKey, keyPairFromPrivateKey } from 'relayly-client';
+ * import { RelaylyClient, generateKey, keyPairFromPrivateKey } from 'relayly';
  * ```
  *
  * Node.js-only extras (e.g. a filesystem-backed peer key store) live at
- * `relayly-client/node` so browser bundlers never try to resolve `node:fs`:
- *   import { FilePeerKeyStore } from 'relayly-client/node';
+ * `relayly/node` so browser bundlers never try to resolve `node:fs`:
+ *   import { FilePeerKeyStore } from 'relayly/node';
  */
 
 // Main client
@@ -27,7 +27,7 @@ export {
 } from './crypto.js';
 
 // Peer key pinning (docs/PROTOCOL.md §7.1) — the in-memory default; see
-// relayly-client/node for a persistent, cross-SDK-compatible store.
+// relayly/node for a persistent, cross-SDK-compatible store.
 export { InMemoryPeerKeyStore } from './peerStore.js';
 export type { PeerKeyStore, PinnedPeer } from './peerStore.js';
 
@@ -60,4 +60,4 @@ export type {
 
 // React hooks are NOT re-exported here to avoid forcing React as a dependency.
 // Import them separately:
-//   import { usePairing, useRelayly } from 'relayly-client/react';
+//   import { usePairing, useRelayly } from 'relayly/react';
