@@ -84,7 +84,10 @@ export class WebSocketTransport {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('relayly: WebSocket is not connected');
     }
-    this.ws.send(data);
+    // Every Uint8Array we construct is backed by a plain ArrayBuffer, never a
+    // SharedArrayBuffer, so this narrows what newer TS/lib.dom versions widened
+    // to Uint8Array<ArrayBufferLike> back to what WebSocket.send actually needs.
+    this.ws.send(data as string | Uint8Array<ArrayBuffer>);
   }
 
   /** Returns true if the WebSocket is currently open. */
