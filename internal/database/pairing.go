@@ -90,8 +90,13 @@ func (db *DB) ListDevices() ([]*Device, error) {
 	return devices, rows.Err()
 }
 
-// PairDevices links deviceA and deviceB as a symmetric pair.
-// Both must be unpaired. The operation is atomic.
+// PairDevices links deviceA and deviceB as a symmetric pair, and clears both devices'
+// device_token expiry (see deviceTokenTTL in internal/pairing/pairing.go): the TTL exists
+// to garbage-collect devices registered but never actually used, not to force a
+// currently-paired device to periodically re-register (which would mint a new device_id
+// and silently orphan the peer's existing pin, see docs/PROTOCOL.md §7.1). A successful
+// pairing is itself the "this device is real, not registration spam" signal the TTL is
+// protecting against. Both must be unpaired. The operation is atomic.
 func (db *DB) PairDevices(idA, idB string) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -114,9 +119,12 @@ func (db *DB) PairDevices(idA, idB string) error {
 		}
 	}
 
-	// Link both directions
+	// Link both directions and clear device_token expiry now that pairing has
+	// proven this is a real, intentionally-used device (see doc comment above).
 	for thisID, peerID := range map[string]string{idA: idB, idB: idA} {
-		if _, err := tx.Exec(`UPDATE devices SET paired_with = ? WHERE id = ?`, peerID, thisID); err != nil {
+		if _, err := tx.Exec(
+			`UPDATE devices SET paired_with = ?, expires_at = NULL WHERE id = ?`, peerID, thisID,
+		); err != nil {
 			return err
 		}
 	}
