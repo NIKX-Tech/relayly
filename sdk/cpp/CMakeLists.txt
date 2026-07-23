@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(relayly VERSION 0.1.0 LANGUAGES C CXX)
+project(relayly VERSION 0.5.0 LANGUAGES C CXX)
 
 # std::span/std::byte in the public API (Client::send) are C++20-only; the known
 # real-world consumer already builds with C++20. See README.md's "Why C++20?".
