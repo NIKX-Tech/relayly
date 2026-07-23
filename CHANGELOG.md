@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.6.1...relayly-v0.6.2) (2026-07-23)
+
+
+### Bug Fixes
+
+* **ci:** pin npm upgrade to the 11.x line, not [@latest](https://github.com/latest) ([#89](https://github.com/NIKX-Tech/relayly/issues/89)) ([9ec9566](https://github.com/NIKX-Tech/relayly/commit/9ec9566866db71933655518513e1019d0bde32e9))
+
 ## [0.6.1](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.6.0...relayly-v0.6.1) (2026-07-23)
 
 
