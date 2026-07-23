@@ -28,9 +28,12 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       # Trusted publishing needs a recent npm CLI (>=11.5.1); the version
-      # bundled with setup-node's Node 20 predates that.
+      # bundled with setup-node's Node 20 predates that. Pinned to the 11.x
+      # line, not @latest: npm 12 requires Node >=22.9.0 and this job's on
+      # Node 20 (npm 11.x's own engines range - ^20.17.0 || >=22.9.0 -
+      # covers it).
       - name: Update npm
-        run: npm install -g npm@latest
+        run: npm install -g npm@^11
 
       - name: Install & Build
         working-directory: sdk/ts
