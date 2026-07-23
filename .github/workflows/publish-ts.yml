@@ -1,0 +1,33 @@
+name: Publish TypeScript SDK
+
+on:
+  push:
+    tags:
+      - 'relayly-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    environment: npm
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install & Build
+        working-directory: sdk/ts
+        run: npm ci && npm run build
+
+      - name: Publish
+        working-directory: sdk/ts
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
