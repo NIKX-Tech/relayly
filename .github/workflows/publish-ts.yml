@@ -7,6 +7,11 @@ on:
 
 permissions:
   contents: read
+  # Required for npm's OIDC trusted publishing (no NPM_TOKEN secret at all -
+  # npm.com's "relayly" package trusts this exact repo/workflow/environment
+  # combination and exchanges this run's OIDC token for a short-lived
+  # publish credential itself). See npm's Trusted Publisher docs.
+  id-token: write
 
 jobs:
   publish:
@@ -22,6 +27,11 @@ jobs:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
 
+      # Trusted publishing needs a recent npm CLI (>=11.5.1); the version
+      # bundled with setup-node's Node 20 predates that.
+      - name: Update npm
+        run: npm install -g npm@latest
+
       - name: Install & Build
         working-directory: sdk/ts
         run: npm ci && npm run build
@@ -29,5 +39,3 @@ jobs:
       - name: Publish
         working-directory: sdk/ts
         run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
