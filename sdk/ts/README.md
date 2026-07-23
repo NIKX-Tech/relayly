@@ -26,9 +26,15 @@ import { RelaylyClient, generateKey, encodeBase64, decodeBase64 } from 'relayly'
 const keyPair = generateKey();
 localStorage.setItem('relayly_key', encodeBase64(keyPair.privateKey));
 
-// deviceToken comes from POST /api/v1/devices
+// device_id and device_token both come from POST /api/v1/devices - device_id
+// is server-assigned, not something you pick (docs/PROTOCOL.md §2).
+const { device_id: deviceId, device_token: deviceToken } = await fetch(
+  'https://relay.example.com/api/v1/devices',
+  { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'my-laptop' }) }
+).then((res) => res.json());
+
 const client = new RelaylyClient('wss://relay.example.com/ws', {
-  deviceId: 'my-laptop',
+  deviceId,
   deviceToken,
   keyPair,
 });

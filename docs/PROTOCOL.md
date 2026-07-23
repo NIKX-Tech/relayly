@@ -26,11 +26,22 @@ Device A  ── E2E: Noise XX (binary frames, opaque) ──  Device B
 `POST /api/v1/devices` with `{"name": "<display name>"}` returns:
 
 ```json
-{ "device_id": "<uuid>", "device_token": "<opaque>", "created_at": "..." }
+{ "device_id": "<uuid>", "device_token": "<opaque>", "expires_at": "..." }
 ```
 
 The CLI `relayly pair <name>` wraps this endpoint (QR output unchanged).
 `device_token` is a bearer credential for connecting; it is NOT related to E2E keys.
+
+A freshly registered, not-yet-paired device's token expires 5 minutes after
+registration (checked at connection time, per §3) - this exists to garbage-collect
+devices that were registered but never used, not to bound how long a real pairing may
+stay connected. **A successful pairing (§5.3) clears the token's expiry on both
+devices**: pairing is itself proof this is a real, intentionally-used device, and a
+device meant to stay paired indefinitely (a server-side relay client, an always-on
+gateway) has no other way to renew an otherwise-expiring token without minting a new
+`device_id` - which would silently orphan the peer's existing key pin (§7.1) and force
+a human to re-pair. An unpaired device's token still expires as before if the pairing
+window is missed.
 
 > Migration note: this endpoint replaces `POST /api/v1/pair` and the field replaces
 > `pair_token`. The old endpoint MAY be kept as a deprecated alias during v0.4.x.

@@ -184,6 +184,38 @@ func TestPairDevices_Success(t *testing.T) {
 	}
 }
 
+// A successful pairing clears device_token expiry on both sides: the TTL exists to
+// garbage-collect devices that were registered but never used, not to force an
+// already-paired device to periodically re-register (which would mint a new device_id
+// and orphan the peer's existing pin). See the doc comment on PairDevices.
+func TestPairDevices_ClearsTokenExpiry(t *testing.T) {
+	db := openMem(t)
+	expiresAt := time.Now().UTC().Add(5 * time.Minute)
+	a := fixture("dev-A", "A", "tok-A")
+	a.ExpiresAt = &expiresAt
+	b := fixture("dev-B", "B", "tok-B")
+	b.ExpiresAt = &expiresAt
+	if err := db.CreateDevice(a); err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	if err := db.CreateDevice(b); err != nil {
+		t.Fatalf("create B: %v", err)
+	}
+
+	if err := db.PairDevices("dev-A", "dev-B"); err != nil {
+		t.Fatalf("pair: %v", err)
+	}
+
+	gotA, _ := db.GetDeviceByID("dev-A")
+	gotB, _ := db.GetDeviceByID("dev-B")
+	if gotA.ExpiresAt != nil {
+		t.Errorf("A.ExpiresAt: want nil (permanent) after pairing, got %v", gotA.ExpiresAt)
+	}
+	if gotB.ExpiresAt != nil {
+		t.Errorf("B.ExpiresAt: want nil (permanent) after pairing, got %v", gotB.ExpiresAt)
+	}
+}
+
 func TestPairDevices_AlreadyPaired(t *testing.T) {
 	db := openMem(t)
 	for _, d := range []*database.Device{
