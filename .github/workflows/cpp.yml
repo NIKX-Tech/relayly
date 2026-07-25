@@ -56,6 +56,18 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      # catch_discover_tests re-execs the same freshly-built, unsigned
+      # relayly-tests.exe once per Catch2 test case (~20 invocations) to list and
+      # then run each one. Windows Defender's real-time scanner re-inspecting an
+      # unsigned binary on repeated invocation is a well-documented GitHub Actions
+      # windows-latest stall (minutes per invocation in the worst case, observed
+      # hands-on here: the run hung for 13+ minutes on a single, otherwise-instant
+      # file save/load test) - excluding the build directory is the standard fix.
+      - name: Exclude build directory from Windows Defender (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath "${{ github.workspace }}\sdk\cpp\build"
+
       - name: Configure
         working-directory: sdk/cpp
         env:
@@ -84,6 +96,9 @@ jobs:
         working-directory: sdk/cpp
         run: cmake --build build -j 4
 
+      # --timeout is a safety net, not the fix for the Defender stall above: a
+      # genuinely hung test (this or a future one) should fail the job in minutes,
+      # not exhaust the whole run's time budget silently.
       - name: Test
         working-directory: sdk/cpp
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --timeout 120
