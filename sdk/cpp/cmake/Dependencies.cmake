@@ -45,6 +45,17 @@ endif()
 
 # --- IXWebSocket (WebSocket client, runs its own I/O thread) --------------------
 set(USE_TLS ON CACHE BOOL "" FORCE)
+# IXWebSocket's own USE_ZLIB option defaults on unconditionally (permessage-deflate
+# WebSocket compression) and does a hard find_package(ZLIB REQUIRED) when it is -
+# satisfied on Linux/macOS by the OS/SDK's own libz, but not preinstalled on
+# Windows. relayly's own wire protocol (a JSON control channel plus binary Noise
+# envelopes, see docs/PROTOCOL.md) doesn't depend on WebSocket-layer compression,
+# so disabling it on Windows only - rather than also fetching zlib - keeps this
+# fix scoped to what's actually needed rather than growing the dependency tree
+# for an optional feature this SDK doesn't use.
+if(WIN32)
+  set(USE_ZLIB OFF CACHE BOOL "" FORCE)
+endif()
 FetchContent_Declare(
   ixwebsocket
   GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
