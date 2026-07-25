@@ -40,6 +40,17 @@ add_library(relayly SHARED
 )
 add_library(relayly::relayly ALIAS relayly)
 
+# A Windows DLL exports nothing by default unless symbols are explicitly annotated
+# with __declspec(dllexport) - unlike a Unix .so/.dylib's default-visible symbols,
+# which relayly's headers were written assuming. Without this, MSVC's linker
+# produces the .dll but no relayly.lib import library, and anything linking against
+# the relayly::relayly target (relayly-tests, relayly-self-pair-test, and any real
+# consumer) fails with LNK1104. WINDOWS_EXPORT_ALL_SYMBOLS auto-exports every symbol,
+# matching Unix behavior instead of auditing every public header for annotations -
+# the same workaround IXWebSocket's own CMakeLists.txt already applies to itself for
+# exactly this reason. A no-op on non-Windows.
+set_target_properties(relayly PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
 target_include_directories(relayly
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
