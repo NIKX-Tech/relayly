@@ -19,6 +19,30 @@ FetchContent_Declare(
 set(SODIUM_DISABLE_TESTS ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(libsodium-cmake)
 
+# --- mbedTLS (Windows-only TLS backend for IXWebSocket below) -------------------
+# IXWebSocket defaults to Secure Transport on Apple and OpenSSL elsewhere, but to
+# mbedTLS on Windows (its own CMakeLists.txt: "default to mbedtls on windows if
+# nothing is configured") - unlike those two, mbedTLS isn't preinstalled on a stock
+# Windows box or a GitHub Actions windows-latest runner, and IXWebSocket only ever
+# looks for it via find_package(MbedTLS REQUIRED), never fetches it itself. Fetching
+# it here and hand-setting the MBEDTLS_FOUND/MBEDTLS_INCLUDE_DIRS/MBEDTLS_LIBRARIES
+# variables IXWebSocket's own find_package(MbedTLS) check looks for (guarded by
+# `if (NOT MBEDTLS_FOUND)`) keeps the "nothing preinstalled but a compiler and CMake"
+# promise this file makes on every other platform.
+if(WIN32)
+  FetchContent_Declare(
+    mbedtls
+    GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+    GIT_TAG v3.6.2
+  )
+  set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+  set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(mbedtls)
+  set(MBEDTLS_FOUND TRUE)
+  set(MBEDTLS_INCLUDE_DIRS "${mbedtls_SOURCE_DIR}/include")
+  set(MBEDTLS_LIBRARIES mbedtls mbedcrypto mbedx509)
+endif()
+
 # --- IXWebSocket (WebSocket client, runs its own I/O thread) --------------------
 set(USE_TLS ON CACHE BOOL "" FORCE)
 FetchContent_Declare(

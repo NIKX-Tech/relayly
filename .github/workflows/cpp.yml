@@ -26,6 +26,16 @@ jobs:
           - os: macos-latest
             cc: clang
             cxx: clang++
+          # No self-pair integration test here (tests/CMakeLists.txt excludes it
+          # on WIN32 - it's written directly against POSIX process/socket APIs).
+          # The library and its unit test suite (relayly-tests) do build and run.
+          - os: windows-latest
+            cc: cl
+            cxx: cl
+
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +50,12 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y cmake build-essential libssl-dev
 
+      # Puts cl.exe/link.exe on PATH the way a Developer Command Prompt would -
+      # windows-latest runners don't have MSVC on PATH by default outside one.
+      - name: Set up MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Configure
         working-directory: sdk/cpp
         env:
@@ -51,7 +67,15 @@ jobs:
           else
             SANITIZE_FLAGS=""
           fi
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug \
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            # Ninja instead of the default multi-config Visual Studio generator so
+            # CMAKE_BUILD_TYPE is honored the same way it is on Linux/macOS's
+            # single-config generators, and ctest needs no --config to find binaries.
+            GENERATOR_FLAGS="-G Ninja"
+          else
+            GENERATOR_FLAGS=""
+          fi
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug $GENERATOR_FLAGS \
             -DCMAKE_C_FLAGS="$SANITIZE_FLAGS" \
             -DCMAKE_CXX_FLAGS="$SANITIZE_FLAGS" \
             -DCMAKE_EXE_LINKER_FLAGS="$SANITIZE_FLAGS"
