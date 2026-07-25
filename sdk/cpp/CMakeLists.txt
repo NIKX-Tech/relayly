@@ -85,6 +85,18 @@ target_compile_features(relayly PUBLIC cxx_std_20)
 
 if(MSVC)
   target_compile_options(relayly PRIVATE /W4)
+  # Never set anywhere in this project before Windows support existed - GCC/Clang
+  # always have full exception support enabled, so this had no equivalent need
+  # there. Without it, cl.exe compiles try/throw/catch (warning C4530: "unwind
+  # semantics are not enabled") but doesn't emit full unwind tables for every
+  # frame, which is undefined behavior for any exception that unwinds through
+  # such a frame - not hypothetical: this is what a real hang traced back to,
+  # in a test whose only distinguishing feature versus its (passing) neighbors
+  # is exercising an exception thrown across the relayly.dll/consumer boundary.
+  # PUBLIC, not PRIVATE: every consumer (relayly-tests, and any real downstream
+  # user like karshipta's gateway) must build with the same exception-handling
+  # model relayly.dll itself does, or the same class of problem recurs for them.
+  target_compile_options(relayly PUBLIC /EHsc)
 else()
   target_compile_options(relayly PRIVATE -Wall -Wextra -Wpedantic)
 endif()
