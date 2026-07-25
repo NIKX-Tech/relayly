@@ -8,6 +8,18 @@
 
 include(FetchContent)
 
+# On Windows, IXWebSocket's own internal `install(EXPORT "ixwebsocket" ...)` rule
+# (inside its fetched CMakeLists.txt, not ours to patch) fails CMake's export-set
+# completeness check because of the mbedtls/mbedcrypto/mbedx509 targets fetched
+# below - the same reason the root CMakeLists.txt skips relayly's own install rules
+# there (see its comment for the full story). CMAKE_SKIP_INSTALL_RULES makes every
+# install() command everywhere in the build (this one included) a no-op, so its
+# completeness validation never runs at all - the actual consumer (karshipta's
+# gateway) uses FetchContent/add_subdirectory, which never calls install() anyway.
+if(WIN32)
+  set(CMAKE_SKIP_INSTALL_RULES ON)
+endif()
+
 # --- libsodium (X25519, ChaCha20-Poly1305) --------------------------------------
 # Upstream libsodium is autotools-based; libsodium-cmake is a maintained wrapper
 # giving it proper FetchContent/CMake integration.
