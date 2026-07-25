@@ -57,16 +57,21 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       # catch_discover_tests re-execs the same freshly-built, unsigned
-      # relayly-tests.exe once per Catch2 test case (~20 invocations) to list and
-      # then run each one. Windows Defender's real-time scanner re-inspecting an
-      # unsigned binary on repeated invocation is a well-documented GitHub Actions
-      # windows-latest stall (minutes per invocation in the worst case, observed
-      # hands-on here: the run hung for 13+ minutes on a single, otherwise-instant
-      # file save/load test) - excluding the build directory is the standard fix.
-      - name: Exclude build directory from Windows Defender (Windows)
+      # relayly-tests.exe once per Catch2 test case (~20 invocations). Windows
+      # Defender's real-time scanner is a well-documented GitHub Actions
+      # windows-latest stall for exactly this pattern - observed hands-on here,
+      # two separate hangs (13+ minutes, then a 120s timeout) on two *different*
+      # otherwise-instant tests, both times one that writes/renames a file under
+      # std::filesystem::temp_directory_path() (test_crypto.cpp/test_peerstore.cpp's
+      # TempKeyPath()/TempStorePath() helpers) - a scan handle on a freshly-written
+      # file can block a subsequent rename/reopen of it until the scan finishes.
+      # Excluding paths one at a time chases whichever directory a given test
+      # happens to touch; disabling real-time scanning entirely for this ephemeral
+      # CI job (not a persistent, security-sensitive machine) is the complete fix.
+      - name: Disable Windows Defender real-time monitoring (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Add-MpPreference -ExclusionPath "${{ github.workspace }}\sdk\cpp\build"
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
 
       - name: Configure
         working-directory: sdk/cpp
