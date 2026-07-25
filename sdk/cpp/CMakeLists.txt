@@ -16,6 +16,19 @@ option(RELAYLY_BUILD_TESTS "Build relayly's unit/integration tests" ON)
 # the point each target is created.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Unlike Linux/macOS (which locate a shared library via an rpath baked into the
+# consuming executable), Windows has no such mechanism - the loader only searches
+# the executable's own directory plus PATH. relayly is built SHARED (see "Why
+# shared?" below), so without this, relayly-tests.exe/relayly-self-pair-test.exe
+# can't find relayly.dll at runtime (fails with STATUS_DLL_NOT_FOUND, 0xc0000135) -
+# hit by ctest's own test-discovery step trying to run the test binary to list its
+# cases, not just an end-user running it manually. Consolidating every DLL and EXE
+# into one output directory is the standard fix; harmless on non-Windows, where
+# rpath already makes this a non-issue.
+if(WIN32)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+endif()
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dependencies.cmake")
 
