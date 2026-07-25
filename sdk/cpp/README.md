@@ -215,9 +215,27 @@ re-exported too. A shared `relayly` absorbs its private dependencies (`sodium`,
 
 ## Requirements
 
-- C++20 compiler (GCC 12+, Clang 15+, or Apple Clang from a recent Xcode)
+- C++20 compiler (GCC 12+, Clang 15+, MSVC 19.3+/Visual Studio 2022, or Apple Clang
+  from a recent Xcode)
 - CMake 3.20+
-- OpenSSL (Linux only; macOS uses Secure Transport, Windows is unsupported in v1)
+- TLS backend: OpenSSL (Linux), Secure Transport (macOS, built in), mbedTLS
+  (Windows). OpenSSL must already be present on Linux; mbedTLS is fetched
+  automatically on Windows (see `cmake/Dependencies.cmake`) - nothing extra to
+  install there either.
+
+Windows notes:
+
+- The self-pair integration test (`relayly-self-pair-test`, exercised via `ctest`)
+  is excluded from Windows builds - it's written directly against POSIX
+  process/socket APIs. The library itself and its unit test suite
+  (`relayly-tests`) build and run on Windows.
+- Consuming via `FetchContent`/`add_subdirectory` (this section's own recommended
+  method, and what real consumers use today) works fully. The `install(EXPORT ...)`
+  rules for a system-installed `find_package(relayly CONFIG)` workflow are skipped
+  on Windows - IXWebSocket's Windows TLS backend (mbedTLS, also fetched
+  automatically) isn't itself part of any export set, which CMake's export
+  validation rejects. Not needed by anything today; real, separate work if it ever
+  is.
 
 ## License
 

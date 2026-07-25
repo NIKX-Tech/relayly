@@ -8,6 +8,18 @@
 
 include(FetchContent)
 
+# On Windows, IXWebSocket's own internal `install(EXPORT "ixwebsocket" ...)` rule
+# (inside its fetched CMakeLists.txt, not ours to patch) fails CMake's export-set
+# completeness check because of the mbedtls/mbedcrypto/mbedx509 targets fetched
+# below - the same reason the root CMakeLists.txt skips relayly's own install rules
+# there (see its comment for the full story). CMAKE_SKIP_INSTALL_RULES makes every
+# install() command everywhere in the build (this one included) a no-op, so its
+# completeness validation never runs at all - the actual consumer (karshipta's
+# gateway) uses FetchContent/add_subdirectory, which never calls install() anyway.
+if(WIN32)
+  set(CMAKE_SKIP_INSTALL_RULES ON)
+endif()
+
 # --- libsodium (X25519, ChaCha20-Poly1305) --------------------------------------
 # Upstream libsodium is autotools-based; libsodium-cmake is a maintained wrapper
 # giving it proper FetchContent/CMake integration.
@@ -19,8 +31,43 @@ FetchContent_Declare(
 set(SODIUM_DISABLE_TESTS ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(libsodium-cmake)
 
+# --- mbedTLS (Windows-only TLS backend for IXWebSocket below) -------------------
+# IXWebSocket defaults to Secure Transport on Apple and OpenSSL elsewhere, but to
+# mbedTLS on Windows (its own CMakeLists.txt: "default to mbedtls on windows if
+# nothing is configured") - unlike those two, mbedTLS isn't preinstalled on a stock
+# Windows box or a GitHub Actions windows-latest runner, and IXWebSocket only ever
+# looks for it via find_package(MbedTLS REQUIRED), never fetches it itself. Fetching
+# it here and hand-setting the MBEDTLS_FOUND/MBEDTLS_INCLUDE_DIRS/MBEDTLS_LIBRARIES
+# variables IXWebSocket's own find_package(MbedTLS) check looks for (guarded by
+# `if (NOT MBEDTLS_FOUND)`) keeps the "nothing preinstalled but a compiler and CMake"
+# promise this file makes on every other platform.
+if(WIN32)
+  FetchContent_Declare(
+    mbedtls
+    GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+    GIT_TAG v3.6.2
+  )
+  set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+  set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(mbedtls)
+  set(MBEDTLS_FOUND TRUE)
+  set(MBEDTLS_INCLUDE_DIRS "${mbedtls_SOURCE_DIR}/include")
+  set(MBEDTLS_LIBRARIES mbedtls mbedcrypto mbedx509)
+endif()
+
 # --- IXWebSocket (WebSocket client, runs its own I/O thread) --------------------
 set(USE_TLS ON CACHE BOOL "" FORCE)
+# IXWebSocket's own USE_ZLIB option defaults on unconditionally (permessage-deflate
+# WebSocket compression) and does a hard find_package(ZLIB REQUIRED) when it is -
+# satisfied on Linux/macOS by the OS/SDK's own libz, but not preinstalled on
+# Windows. relayly's own wire protocol (a JSON control channel plus binary Noise
+# envelopes, see docs/PROTOCOL.md) doesn't depend on WebSocket-layer compression,
+# so disabling it on Windows only - rather than also fetching zlib - keeps this
+# fix scoped to what's actually needed rather than growing the dependency tree
+# for an optional feature this SDK doesn't use.
+if(WIN32)
+  set(USE_ZLIB OFF CACHE BOOL "" FORCE)
+endif()
 FetchContent_Declare(
   ixwebsocket
   GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
