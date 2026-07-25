@@ -66,37 +66,52 @@ else()
 endif()
 
 # --- Install rules: find_package(relayly CONFIG) --------------------------------
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
+# Windows-excluded, not ported: install(EXPORT ...) requires every target in an
+# exported target's link interface to itself be part of an export set. On Windows,
+# ixwebsocket links the mbedtls/mbedcrypto/mbedx509 targets fetched in
+# Dependencies.cmake (its own TLS backend there), and IXWebSocket's own internal
+# install(EXPORT "ixwebsocket" ...) rule hits the exact same completeness check for
+# the exact same reason - that one lives in IXWebSocket's own fetched CMakeLists.txt,
+# not something patchable here. The real consumer (karshipta's gateway, and this
+# SDK's own README's primary documented install method) uses FetchContent /
+# add_subdirectory, which never invokes install() at all - only a system-installed
+# + find_package(relayly CONFIG) workflow needs this, and that's not exercised by
+# anything today. Folding mbedTLS's targets into the same export set (or patching
+# IXWebSocket's) is real, separate follow-up work if that workflow is ever needed
+# on Windows.
+if(NOT WIN32)
+  include(GNUInstallDirs)
+  include(CMakePackageConfigHelpers)
 
-install(TARGETS relayly ixwebsocket
-  EXPORT relayly-targets
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-install(DIRECTORY include/relayly DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(EXPORT relayly-targets
-  FILE relayly-targets.cmake
-  NAMESPACE relayly::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/relayly
-)
+  install(TARGETS relayly ixwebsocket
+    EXPORT relayly-targets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  )
+  install(DIRECTORY include/relayly DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  install(EXPORT relayly-targets
+    FILE relayly-targets.cmake
+    NAMESPACE relayly::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/relayly
+  )
 
-configure_package_config_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/relayly-config.cmake.in"
-  "${CMAKE_CURRENT_BINARY_DIR}/relayly-config.cmake"
-  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/relayly
-)
-write_basic_package_version_file(
-  "${CMAKE_CURRENT_BINARY_DIR}/relayly-config-version.cmake"
-  VERSION ${PROJECT_VERSION}
-  COMPATIBILITY SameMajorVersion
-)
-install(FILES
-  "${CMAKE_CURRENT_BINARY_DIR}/relayly-config.cmake"
-  "${CMAKE_CURRENT_BINARY_DIR}/relayly-config-version.cmake"
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/relayly
-)
+  configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/relayly-config.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/relayly-config.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/relayly
+  )
+  write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/relayly-config-version.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+  )
+  install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/relayly-config.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/relayly-config-version.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/relayly
+  )
+endif()
 
 if(RELAYLY_BUILD_TESTS)
   enable_testing()
