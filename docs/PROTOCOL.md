@@ -111,7 +111,7 @@ Unknown fields MUST be ignored.
 5. The **accepting device (B) is the Noise initiator** and starts the handshake (§6).
 
 v1 supports exactly **one linked peer per device** (matches current DB schema). Multi-peer
-routing is roadmap v0.7.
+routing is roadmap v0.8.
 
 ## 6. E2E channel (binary frames)
 
@@ -167,7 +167,7 @@ accepted v1 tradeoff; code-bound handshakes (PSK) are a roadmap item.
 - Server sends WS pings every `ping_interval` (config); connections idle past `deadline`
   are closed. Browser clients use JSON `ping`/`pong` instead.
 - Server MAY drop binary frames addressed to an offline peer (no store-and-forward in v1;
-  roadmap v0.8). SDKs MUST NOT assume delivery; peers learn liveness via `peer_status`.
+  roadmap v0.9). SDKs MUST NOT assume delivery; peers learn liveness via `peer_status`.
 - Base64 in JSON fields is standard alphabet **with padding**.
 
 ## 9. Versioning

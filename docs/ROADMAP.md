@@ -23,18 +23,23 @@ is judged against that sentence.
   interop matrix became a required CI check. → `docs/tasks/02-sdks-and-interop.md`
 - **v0.6 — C++ SDK** · `sdk/cpp` for native consumers (karshipta gateway), joins the
   interop matrix as its fifth SDK. → `docs/tasks/03-cpp-sdk.md`
+- **v0.7 — C++ SDK Windows support** · `sdk/cpp` builds, links, and passes its full
+  unit test suite on Windows (MSVC); unblocks karshipta gateway's own Windows build.
+  Landed via an automatic release-please version bump rather than a planned milestone
+  push, ahead of where "Multi-peer" was originally numbered below - renumbered that
+  and everything after it up by one rather than reuse v0.7 for two unrelated things.
 
 ## The road to v1.0
 
-- **v0.7 — Multi-peer** · Devices link to N peers, not 1: DB schema (pairs table),
+- **v0.8 — Multi-peer** · Devices link to N peers, not 1: DB schema (pairs table),
   routing, per-peer Noise sessions in SDKs, `Send(peer_id, …)` already has the right
   shape. Unlocks "all my devices," the original product idea, and karshipta fleets.
-- **v0.8 — Offline resilience** · (a) Store-and-forward: relay queues *ciphertext* for
+- **v0.9 — Offline resilience** · (a) Store-and-forward: relay queues *ciphertext* for
   offline peers (bounded, TTL, still zero-knowledge — this is where E2E pays off, a
   hop-by-hop design could never do this honestly). (b) LAN mode: mDNS/DNS-SD discovery +
   direct device↔device WS on the local network with the same Noise layer — two phones in
   a blacked-out apartment need no relay at all. This milestone IS the Iran scenario.
-- **v0.9 — Key lifecycle + protocol v1.1** · Key rotation with signed handover; explicit
+- **v0.10 — Key lifecycle + protocol v1.1** · Key rotation with signed handover; explicit
   re-pair/unpin UX; pairing-code-bound handshakes (PSK from the 6-digit code) to close
   the TOFU window; protocol version negotiation exercised for real.
 - **v1.0 — Trust it** · External security review of protocol + server (budgetable in an
