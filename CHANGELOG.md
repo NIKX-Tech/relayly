@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.6.2...relayly-v0.7.0) (2026-07-26)
+
+
+### Features
+
+* **release:** give release-please a conventional commit to parse ([7bc4ed5](https://github.com/NIKX-Tech/relayly/commit/7bc4ed57fe13b2e9d6244723408bfbc825660220))
+
 ## [0.6.2](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.6.1...relayly-v0.6.2) (2026-07-23)
 
 
