@@ -21,7 +21,13 @@ using nlohmann::json;
 
 std::string ExpandHome(const std::string& path) {
   if (path.empty() || path[0] != '~') return path;
+  // HOME is unset by default in a native (non-git-bash) Windows process; USERPROFILE
+  // is the platform equivalent there. Checked second, not instead of HOME, so a
+  // Windows shell that does export HOME (git-bash, WSL-adjacent setups) still wins.
   const char* home = std::getenv("HOME");
+#ifdef _WIN32
+  if (home == nullptr) home = std::getenv("USERPROFILE");
+#endif
   if (home == nullptr) return path;
   return std::string(home) + path.substr(1);
 }
@@ -32,7 +38,14 @@ std::string NowRfc3339Utc() {
   auto now = std::chrono::system_clock::now();
   std::time_t t = std::chrono::system_clock::to_time_t(now);
   std::tm tm{};
+#ifdef _WIN32
+  // gmtime_s takes (dest, source) - the reverse of POSIX gmtime_r(source, dest) -
+  // and returns errno_t rather than a struct tm*; the buffer is filled the same way
+  // either branch takes.
+  gmtime_s(&tm, &t);
+#else
   gmtime_r(&t, &tm);
+#endif
   char buf[32];
   std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
   return std::string(buf);
