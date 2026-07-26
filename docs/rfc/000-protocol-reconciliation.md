@@ -87,4 +87,5 @@ each design:
 - **v0.4 — Protocol v1**: this RFC + spec + server fix.
 - **v0.5 — SDK convergence + interop CI.**
 - **v0.6 — C++ SDK.**
-- See `docs/ROADMAP.md` for v0.7 → v1.0.
+- **v0.7 — C++ SDK Windows support.**
+- See `docs/ROADMAP.md` for v0.8 → v1.0.

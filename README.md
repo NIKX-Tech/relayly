@@ -82,7 +82,7 @@ graph LR
 The server and all five official SDKs (`sdk/go`, `sdk/ts`, `sdk/py`, `sdk/rust`,
 `sdk/cpp`) speak Protocol v1 today. See [RFC-000](docs/rfc/000-protocol-reconciliation.md)
 for the drift this replaced, and [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next.
-Protocol v1 links exactly one peer per device; multi-peer fan-out is scoped for v0.7.
+Protocol v1 links exactly one peer per device; multi-peer fan-out is scoped for v0.8.
 
 ---
 
@@ -303,7 +303,7 @@ asyncio.run(main())
 
 ```toml
 [dependencies]
-relayly = "0.3"
+relayly = "0.6"
 tokio = { version = "1", features = ["full"] }
 ```
 
