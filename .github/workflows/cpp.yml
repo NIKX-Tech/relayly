@@ -28,7 +28,7 @@ jobs:
             cxx: clang++
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The self-pair integration test builds and runs the real cmd/relayly server.
       - name: Set up Go
