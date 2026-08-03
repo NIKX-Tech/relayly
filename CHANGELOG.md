@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.7.1...relayly-v0.7.2) (2026-08-03)
+
+
+### Bug Fixes
+
+* **sdk/cpp:** stop passing WebSocket close defaults across a DLL boundary ([#108](https://github.com/NIKX-Tech/relayly/issues/108)) ([#109](https://github.com/NIKX-Tech/relayly/issues/109)) ([f9ee9c4](https://github.com/NIKX-Tech/relayly/commit/f9ee9c401e6b0c6ff1c31d7948848f7ba52d5d0a))
+
 ## [0.7.1](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.7.0...relayly-v0.7.1) (2026-07-26)
 
 
