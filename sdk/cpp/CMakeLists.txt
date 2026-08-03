@@ -9,6 +9,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(RELAYLY_BUILD_TESTS "Build relayly's unit/integration tests" ON)
 
+# Off by default (matches every consumer that doesn't ask for it). ON forces
+# ixwebsocket to build as its own shared library instead of being statically
+# absorbed into relayly.dll/.so, the configuration karshipta's gateway needs on
+# Windows to avoid a double init/deinit of ix::initNetSystem across DLLs. CI uses
+# this to exercise that configuration here, since it's what caught #108 (an
+# unresolved external symbol on an ixwebsocket data member relayly's own code
+# referenced across the resulting DLL boundary) and our own default build never
+# would have.
+option(RELAYLY_IXWEBSOCKET_SHARED "Build ixwebsocket as its own shared library" OFF)
+
 # relayly links statically-built dependencies (sodium, nlohmann_json) into a shared
 # library (see "Why shared?" below). libsodium-cmake doesn't build its `sodium`
 # target with -fPIC itself, which fails at link time on Linux ("recompile with

@@ -73,7 +73,17 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
   GIT_TAG v12.0.1
 )
+# Scoped to just this one FetchContent call so RELAYLY_IXWEBSOCKET_SHARED doesn't
+# also flip libsodium-cmake's already-carefully-tuned sodium target (see the
+# CMAKE_POSITION_INDEPENDENT_CODE comment in the root CMakeLists.txt) or anything
+# fetched after it, restored immediately below, before nlohmann_json/Catch2.
+if(RELAYLY_IXWEBSOCKET_SHARED)
+  set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+endif()
 FetchContent_MakeAvailable(ixwebsocket)
+if(RELAYLY_IXWEBSOCKET_SHARED)
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+endif()
 
 # --- nlohmann/json (control channel) --------------------------------------------
 FetchContent_Declare(

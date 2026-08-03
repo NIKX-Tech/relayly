@@ -32,6 +32,17 @@ jobs:
           - os: windows-latest
             cc: cl
             cxx: cl
+          # Same as the leg above, but with ixwebsocket forced to build as its own
+          # shared library instead of being statically absorbed into relayly.dll -
+          # the configuration karshipta's gateway needs to avoid a double init of
+          # ix::initNetSystem across DLLs. #108 (an unresolved external symbol on
+          # an ixwebsocket data member, only reachable across that DLL boundary)
+          # was invisible to every other leg here and only caught by karshipta's
+          # own CI; this leg exists so that class of regression is caught here too.
+          - os: windows-latest
+            cc: cl
+            cxx: cl
+            ixwebsocket_shared: true
 
     defaults:
       run:
@@ -92,7 +103,12 @@ jobs:
           else
             GENERATOR_FLAGS=""
           fi
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug $GENERATOR_FLAGS \
+          if [ "${{ matrix.ixwebsocket_shared }}" = "true" ]; then
+            IXWEBSOCKET_FLAGS="-DRELAYLY_IXWEBSOCKET_SHARED=ON"
+          else
+            IXWEBSOCKET_FLAGS=""
+          fi
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug $GENERATOR_FLAGS $IXWEBSOCKET_FLAGS \
             -DCMAKE_C_FLAGS="$SANITIZE_FLAGS" \
             -DCMAKE_CXX_FLAGS="$SANITIZE_FLAGS" \
             -DCMAKE_EXE_LINKER_FLAGS="$SANITIZE_FLAGS"
