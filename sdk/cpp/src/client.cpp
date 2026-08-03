@@ -90,7 +90,19 @@ struct PairWaiter {
 struct Client::Impl {
   explicit Impl(Options options) : opts(std::move(options)) {}
 
-  ~Impl() { ws.stop(); }
+  // Explicit code/reason, not ws.stop()'s bare default: the defaults are
+  // ix::WebSocketCloseConstants::kNormalClosureCode/kNormalClosureMessage,
+  // static const class data members with no dllexport annotation anywhere
+  // in ixwebsocket's own source. A consumer relying on the default embeds
+  // a reference to that external data symbol at the call site, which a
+  // Windows DLL build of ixwebsocket never exports (data symbols need
+  // explicit annotation on MSVC, unlike functions) - "unresolved external
+  // symbol ix::WebSocketCloseConstants::kNormalClosureCode" linking
+  // relayly.dll, found only by an actual Windows CI build with ixwebsocket
+  // forced shared (karshipta gateway's own relay-transport.md explains why
+  // it must be shared there). 1000/"Normal closure" are RFC 6455's own
+  // normal-closure code/reason, the exact values these constants hold.
+  ~Impl() { ws.stop(1000, "Normal closure"); }
 
   Options opts;
   noise::KeyPair static_keypair{};
@@ -489,7 +501,8 @@ std::unique_ptr<Client> Client::Connect(const std::string& server_url, Options o
   impl->ws.start();
 
   if (fut.wait_for(std::chrono::seconds(kConnectTimeoutSecs)) != std::future_status::ready) {
-    impl->ws.stop();
+    // Explicit code/reason: see Impl::~Impl()'s comment above.
+    impl->ws.stop(1000, "Normal closure");
     throw Error(ErrorCode::kTimeout, "relayly: timed out connecting to " + server_url);
   }
   fut.get();  // rethrows if FailConnect ran instead of a successful welcome
@@ -500,7 +513,8 @@ std::unique_ptr<Client> Client::Connect(const std::string& server_url, Options o
 }
 
 Client::~Client() {
-  if (impl_) impl_->ws.stop();
+  // Explicit code/reason: see Impl::~Impl()'s comment above.
+  if (impl_) impl_->ws.stop(1000, "Normal closure");
 }
 
 void Client::Send(const std::string& peer_id, std::span<const std::byte> payload) {
@@ -557,7 +571,8 @@ std::future<Peer> Client::AcceptPair(const std::string& code) {
 
 void Client::Close() {
   if (impl_->closed.exchange(true)) return;
-  impl_->ws.stop();
+  // Explicit code/reason: see Impl::~Impl()'s comment above.
+  impl_->ws.stop(1000, "Normal closure");
 }
 
 std::string PairCode::QrCodeUrl(const std::string& server_url) const {
