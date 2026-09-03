@@ -103,6 +103,22 @@ correctly to a *zero-knowledge* relay, where the shared bus must carry only opaq
 ciphertext and device IDs, never anything the relay could use to reconstruct who is
 talking to whom beyond what it already necessarily knows today.
 
+A more principled prior art for the presence half specifically is Phoenix's distributed
+Presence (Elixir/Erlang, Chris McCord/José Valim): a CRDT-based design that tracks node
+membership without a single external store or a single point of truth, converging
+correctly under network partitions without an arbitrary staleness bound. It is the more
+academically rigorous answer to "track presence across nodes" and is worth naming
+precisely so the choice below reads as deliberate, not as an unresearched gap. This RFC
+does not adopt it: a CRDT-gossip presence layer is a materially larger and more complex
+piece of machinery than this project's stated design values support (`README.md`: "Small,
+dependency-light codebase" and auditability as an explicit goal) - the two-line `Hub`
+struct this RFC is replacing is itself evidence of how deliberately small the surface area
+has stayed. A single external store (Redis) with an explicit, quantified staleness bound
+(see Consistency and failure modes below) is a smaller, more auditable piece of machinery
+that fits this project's actual constraints, at the cost of a real, bounded, and honestly
+documented weaker guarantee than Phoenix Presence provides - not a guarantee this RFC
+claims to match.
+
 ## Decision
 
 Externalize the three pieces of process-local state identified above, behind a new
@@ -155,6 +171,35 @@ for NATS's stronger delivery guarantees emerges):
   never silently fall back to only-local delivery, which would look like intermittent,
   unexplainable message loss depending on which instance a client happened to land on.
 
+### Consistency and failure modes (the part a TTL-based design must be honest about)
+
+A `SET ... EX <ttl>` presence key is a real, known trade-off, not a solved problem, and
+this RFC states its consequence precisely rather than leaving it implicit. If an instance
+holding a device's connection dies ungracefully (process kill, node failure - anything
+that skips `UnregisterLocal`'s `DEL`), the presence key for every device it held stays
+correct-looking in Redis until its TTL expires. During that window, any other instance's
+`Route` call for a message addressed to one of those devices believes the device is still
+reachable, publishes to a Pub/Sub channel with no subscriber, and the message is silently
+lost - not misdelivered, not retried, just dropped, exactly like a message to a genuinely
+offline device today, except the sender has no way to tell the two cases apart until the
+TTL lapses and the key naturally disappears.
+
+This is a bounded-staleness guarantee, not linearizable presence, and the bound is exactly
+the TTL/heartbeat-interval choice: a 5s TTL with a 2s heartbeat bounds the false-online
+window to at most 5s after a hard crash (worst case: the instance dies immediately after a
+successful heartbeat), at the cost of a heartbeat write every 2s per connected device. This
+number needs to be chosen deliberately against relayly's actual connection volume and
+Redis's own write capacity, not left as a placeholder - Phase B's implementation should
+measure Redis's actual sustained SET rate under a realistic connection count before fixing
+these constants, and this RFC's Evaluation section below requires that measurement, not
+just a pass/fail functional check.
+
+A graceful shutdown (SIGTERM, the normal rolling-deploy path) does not have this problem at
+all - `UnregisterLocal`'s `DEL` removes the presence key immediately, the same instant
+today's in-memory `Hub.Unregister` does. The staleness window is specifically, and only, a
+hard-crash property. The Evaluation section below tests both cases separately for exactly
+this reason: they are not the same test.
+
 ### 3. Pairing codes, same mechanism
 
 Move `pairCodeRegistry`'s `Put`/`Take` to Redis (`SET pair:{code} {requesterID} EX <ttl>`,
@@ -164,13 +209,27 @@ not a second dependency.
 
 ### 4. Rate limiting: shared, with an explicit accepted trade-off
 
-Move the token-bucket state to Redis as well (`INCR` with a `PEXPIRE` on first increment
-approximates a fixed-window limiter with one round trip per request). Accept that this
-adds a Redis round-trip to every WebSocket upgrade attempt specifically - the hot path
-(message routing after a connection is established) is unaffected. If this measurably
-matters in practice, a documented fallback is a local-approximate limiter (each instance
-enforces `configured-limit / instance-count`) traded explicitly against precision, not a
-silent per-instance limit as today.
+Move the token-bucket state to Redis as well, as a fixed-window limiter with one round
+trip per request. `INCR` then a separate `PEXPIRE` is the wrong implementation to actually
+ship: those are two round trips, and a crash or timeout between them leaves a counter key
+with no expiry at all - a client's limit silently and permanently stuck at whatever count
+it reached, never resetting. The correct version is Redis's own documented rate-limiting
+recipe, one atomic Lua script via `EVAL` so the increment and the conditional expiry are a
+single indivisible operation with no crash-between-two-commands gap:
+
+```lua
+local current = redis.call("INCR", KEYS[1])
+if tonumber(current) == 1 then
+    redis.call("PEXPIRE", KEYS[1], ARGV[1])
+end
+return current
+```
+
+Accept that this adds a Redis round trip to every WebSocket upgrade attempt specifically -
+the hot path (message routing after a connection is established) is unaffected. If this
+measurably matters in practice, a documented fallback is a local-approximate limiter (each
+instance enforces `configured-limit / instance-count`) traded explicitly against
+precision, not a silent per-instance limit as today.
 
 ### 5. SQLite → real multi-writer store, decided by what's actually shared
 
@@ -216,6 +275,18 @@ read/write pattern against `internal/database` is measured, rather than guessing
   keeps using the in-memory `Router` implementation from step 1 with zero new
   dependencies - Redis is opt-in, gated by config, not a requirement imposed on every
   deployment.
+- **A single Redis instance is a new single point of failure, and this RFC does not
+  pretend otherwise.** Today, one relay process is the whole system's SPOF. After this
+  RFC, N relay processes plus one Redis instance replaces it - strictly better for
+  *capacity* (more devices than one process can hold), but not automatically better for
+  *availability* unless Redis itself is deployed HA (Sentinel or Cluster). Until it is,
+  killing Redis degrades every relay instance to routing only its own locally-connected
+  devices (a real, survivable degradation - not a total outage, since local delivery never
+  depended on Redis) but breaks all cross-instance delivery and new pairings at once. A
+  production multi-instance deployment needs HA Redis to actually deliver on the
+  availability half of "horizontal scaling," not just the capacity half; this RFC scopes
+  that as a deployment requirement to document, not as something Phase B's code needs to
+  solve itself.
 - `internal/relay/hub.go` loses direct ownership of routing; `Client` objects stay
   process-local (a live goroutine pair and channel can't meaningfully live anywhere else),
   but "is device X reachable, and where" becomes a question the `Router` interface
@@ -228,24 +299,53 @@ read/write pattern against `internal/database` is measured, rather than guessing
 
 Two relay instances, run behind a load balancer configured with **no** sticky/session
 affinity (deliberately, to force devices onto different instances rather than let a
-lucky routing outcome hide a real bug):
+lucky routing outcome hide a real bug), against a single-node Redis for the base case:
 
-1. Two devices connect; confirm (via the admin UI or a debug endpoint) that they land on
-   different instances.
+**Functional correctness**
+
+1. Two devices connect; confirm (via the admin UI or a debug endpoint, not by inference)
+   which instance each actually landed on, and that they differ.
 2. A `pair_request` issued against one instance and the matching `pair_accept` issued
    against the other: confirm pairing succeeds.
 3. Once paired, confirm a binary envelope sent by one device is delivered to the other,
    round-trip, regardless of which instance either is connected to.
-4. Kill one instance mid-session: confirm the still-connected device's peer is correctly
-   reported offline (via `notifyPeerStatus`), and a reconnect from the killed instance's
-   former device lands on the surviving instance and pairing state is intact (read from
-   the shared store, not lost with the dead process).
-5. Confirm rate limiting behaves per whichever of step 4's two documented options was
-   implemented (shared count, or an explicitly-accepted per-instance approximation) -
-   not silently multiplied by instance count.
+4. **Graceful shutdown** of one instance (SIGTERM): confirm the still-connected device's
+   peer is correctly and immediately reported offline (`notifyPeerStatus`), and a
+   reconnect from the terminated instance's former device lands on the surviving instance
+   with pairing state intact.
+5. **Hard crash** of one instance (SIGKILL), tested separately from step 4 because the two
+   have genuinely different failure semantics per the Consistency and failure modes
+   section above: confirm messages addressed to the crashed instance's former devices are
+   dropped (not misdelivered) for up to the configured TTL, and confirm the surviving
+   instance's own devices are entirely unaffected throughout.
+6. Confirm rate limiting behaves per whichever of step 4 (Decision, not Evaluation)'s two
+   documented options was implemented - shared count via the atomic Lua script, or an
+   explicitly-accepted per-instance approximation - not silently multiplied by instance
+   count, and confirm the Lua script's atomicity specifically: no key is ever left without
+   a TTL under concurrent load (a race the two-command `INCR`/`PEXPIRE` version could
+   produce, which is exactly why it was rejected above).
+
+**Measured, not just observed** - this is the part that makes the design's own stated
+trade-offs verifiable rather than asserted:
+
+7. The false-online staleness window from step 5, measured directly (time from SIGKILL to
+   the last successful cross-instance delivery attempt against that instance's devices),
+   compared against the configured TTL to confirm the bound actually holds in practice,
+   not just in theory.
+8. Added per-message latency from the Redis round trip (local-delivery case vs.
+   cross-instance case), under a realistic connected-device count, to give the TTL/
+   heartbeat-interval choice in the Consistency section a real number to be tuned against
+   instead of a placeholder.
+9. Redis killed outright: confirm each instance degrades to local-only delivery (per the
+   Consequences section's documented degradation) rather than crashing or wedging, and
+   recovers cross-instance delivery automatically once Redis returns, with no relay
+   process restart required.
 
 This becomes the interop-style regression test this class of bug needs, the same way
 RFC-000's protocol drift led to a mandatory cross-language interop matrix in CI
 (`docs/tasks/02-sdks-and-interop.md`) - a multi-instance scenario currently has zero
 coverage anywhere in this repo, and should gain permanent CI coverage once implemented,
-not just a one-time manual verification.
+not just a one-time manual verification. Items 7-8's numbers belong in this RFC's
+implementation PR description and in `docs/ROADMAP.md`'s own record of the work, not
+just a passing CI job - they are the actual evidence behind every quantitative claim
+this document makes.
