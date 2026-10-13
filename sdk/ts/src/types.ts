@@ -82,6 +82,10 @@ export interface RelaylyClientEvents {
   ready: (peerId: string) => void;
   /** Fired when the server reports the paired peer's online/offline transition. */
   peerStatus: (peerId: string, online: boolean) => void;
+  /** Fired when this device's pairing link is cleared - whether this client called
+   * unpair() itself, or the peer unpaired from it. peerId is who it was paired
+   * with, if there was anyone (docs/PROTOCOL.md §5.4). */
+  unpaired: (peerId: string | undefined) => void;
   /** Fired when the WebSocket connection is established (or re-established). */
   connected: () => void;
   /** Fired when the connection drops. Will attempt reconnect unless closed. */

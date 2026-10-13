@@ -169,4 +169,72 @@ describe('RelaylyClient self-pair integration', () => {
       await server.stop();
     }
   }, 30_000);
+
+  it('unpair() lets a device pair with a different device afterward', async () => {
+    // Regression test: before unpair() existed, a device that had ever paired
+    // could never legitimately pair with anyone else again - acceptPair against
+    // an already-paired device on either side always rejected already_paired,
+    // with no way out short of re-registering entirely. Confirmed live against
+    // a real gateway and karshipta-cloud site.
+    const { RelaylyClient } = await import('./client.js');
+    const { generateKey } = await import('./crypto.js');
+    const { InMemoryPeerKeyStore } = await import('./peerStore.js');
+
+    const server = await startRelayServer(binPath);
+    try {
+      const devA = await registerDevice(server.baseUrl, 'device-a');
+      const devB = await registerDevice(server.baseUrl, 'device-b');
+      const devC = await registerDevice(server.baseUrl, 'device-c');
+
+      const clientA = new RelaylyClient(server.wsUrl, {
+        deviceId: devA.device_id,
+        deviceToken: devA.device_token,
+        keyPair: generateKey(),
+        peerStore: new InMemoryPeerKeyStore(),
+      });
+      const clientB = new RelaylyClient(server.wsUrl, {
+        deviceId: devB.device_id,
+        deviceToken: devB.device_token,
+        keyPair: generateKey(),
+        peerStore: new InMemoryPeerKeyStore(),
+      });
+      const clientC = new RelaylyClient(server.wsUrl, {
+        deviceId: devC.device_id,
+        deviceToken: devC.device_token,
+        keyPair: generateKey(),
+        peerStore: new InMemoryPeerKeyStore(),
+      });
+
+      await clientA.connect();
+      await clientB.connect();
+
+      const code = await clientA.requestPairCode();
+      const waitForA = clientA.waitForPairing();
+      await clientB.acceptPair(code.shortCode);
+      await waitForA;
+
+      const unpairedOnB = new Promise<string | undefined>((resolve) => {
+        clientB.once('unpaired', resolve);
+      });
+      await clientA.unpair();
+      // B is still connected - it must find out immediately, not just on its
+      // next acceptPair attempt.
+      expect(await unpairedOnB).toBe(devA.device_id);
+
+      await clientC.connect();
+      const code2 = await clientA.requestPairCode();
+      const waitForA2 = clientA.waitForPairing();
+      const peerC = await clientC.acceptPair(code2.shortCode);
+      const peerA2 = await waitForA2;
+
+      expect(peerA2.id).toBe(devC.device_id);
+      expect(peerC.id).toBe(devA.device_id);
+
+      clientA.disconnect();
+      clientB.disconnect();
+      clientC.disconnect();
+    } finally {
+      await server.stop();
+    }
+  }, 30_000);
 });

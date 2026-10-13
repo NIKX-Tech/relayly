@@ -319,6 +319,119 @@ func TestHandlePairAccept_AlreadyPaired(t *testing.T) {
 	}
 }
 
+// ── unpair ────────────────────────────────────────────────────────────────────
+
+func TestHandleUnpair_ClearsBothSidesAndNotifiesConnectedPeer(t *testing.T) {
+	db := newTestDB(t)
+	mustCreateDevice(t, db, "dev-a", "A")
+	mustCreateDevice(t, db, "dev-b", "B")
+	if err := db.PairDevices("dev-a", "dev-b"); err != nil {
+		t.Fatalf("pre-pair: %v", err)
+	}
+
+	hub := newTestHub()
+	clientA := newTestClient("dev-a", db, hub)
+	clientB := newTestClient("dev-b", db, hub)
+	clientA.setPeer("dev-b")
+	clientB.setPeer("dev-a")
+	hub.clients["dev-a"] = clientA
+	hub.clients["dev-b"] = clientB
+
+	clientA.handleControl([]byte(`{"type":"unpair"}`))
+
+	// A gets its own confirmation synchronously.
+	msgA, _ := recvControl(t, clientA)
+	if msgA.Type != "unpaired" || msgA.PeerID != "dev-b" {
+		t.Errorf("A's unpaired: %+v", msgA)
+	}
+	// B, still connected, gets notified too.
+	msgB, _ := recvControl(t, clientB)
+	if msgB.Type != "unpaired" || msgB.PeerID != "dev-a" {
+		t.Errorf("B's unpaired: %+v", msgB)
+	}
+
+	if _, ok := clientA.Peer(); ok {
+		t.Error("clientA.Peer() should be cleared after unpair")
+	}
+	if _, ok := clientB.Peer(); ok {
+		t.Error("clientB.Peer() should be cleared after unpair")
+	}
+
+	a, _ := db.GetDeviceByID("dev-a")
+	b, _ := db.GetDeviceByID("dev-b")
+	if a.PairedWith != nil {
+		t.Errorf("db: A.PairedWith should be nil, got %v", *a.PairedWith)
+	}
+	if b.PairedWith != nil {
+		t.Errorf("db: B.PairedWith should be nil, got %v", *b.PairedWith)
+	}
+}
+
+func TestHandleUnpair_PeerOfflineStillClearsItsDbRow(t *testing.T) {
+	db := newTestDB(t)
+	mustCreateDevice(t, db, "dev-a", "A")
+	mustCreateDevice(t, db, "dev-b", "B")
+	if err := db.PairDevices("dev-a", "dev-b"); err != nil {
+		t.Fatalf("pre-pair: %v", err)
+	}
+
+	hub := newTestHub()
+	clientA := newTestClient("dev-a", db, hub)
+	clientA.setPeer("dev-b")
+	hub.clients["dev-a"] = clientA
+	// B is not connected - not registered in hub.clients at all.
+
+	clientA.handleControl([]byte(`{"type":"unpair"}`))
+	msg, _ := recvControl(t, clientA)
+	if msg.Type != "unpaired" || msg.PeerID != "dev-b" {
+		t.Errorf("A's unpaired: %+v", msg)
+	}
+
+	b, _ := db.GetDeviceByID("dev-b")
+	if b.PairedWith != nil {
+		t.Errorf("db: B.PairedWith should be nil even though B was offline, got %v", *b.PairedWith)
+	}
+}
+
+func TestHandleUnpair_NotPairedIsANoOpSuccess(t *testing.T) {
+	db := newTestDB(t)
+	mustCreateDevice(t, db, "dev-a", "A")
+	c := newTestClient("dev-a", db, newTestHub())
+
+	c.handleControl([]byte(`{"type":"unpair"}`))
+	msg, _ := recvControl(t, c)
+	if msg.Type != "unpaired" || msg.PeerID != "" {
+		t.Errorf("want unpaired with no peer_id, got %+v", msg)
+	}
+}
+
+func TestHandleUnpair_AllowsPairingWithADifferentDeviceAfterward(t *testing.T) {
+	db := newTestDB(t)
+	mustCreateDevice(t, db, "dev-a", "A")
+	mustCreateDevice(t, db, "dev-b", "B")
+	mustCreateDevice(t, db, "dev-c", "C")
+	if err := db.PairDevices("dev-a", "dev-b"); err != nil {
+		t.Fatalf("pre-pair: %v", err)
+	}
+
+	hub := newTestHub()
+	clientA := newTestClient("dev-a", db, hub)
+	clientA.setPeer("dev-b")
+	hub.clients["dev-a"] = clientA
+	clientA.handleControl([]byte(`{"type":"unpair"}`))
+	recvControl(t, clientA)
+
+	// This is the exact scenario that used to fail already_paired with no way
+	// out - confirmed live against a real gateway.
+	hub.pairCodes.Put("121212", "dev-a", pairing.PairingCodeTTL)
+	cC := newTestClient("dev-c", db, hub)
+	cC.handleControl([]byte(`{"type":"pair_accept","code":"121212"}`))
+	msg, _ := recvControl(t, cC)
+	if msg.Type != "pair_complete" || msg.PeerID != "dev-a" {
+		t.Errorf("re-pairing with a different device should now succeed, got %+v", msg)
+	}
+}
+
 func TestHandlePairAccept_MissingCode(t *testing.T) {
 	c := newTestClient("dev-b", newTestDB(t), newTestHub())
 	c.handleControl([]byte(`{"type":"pair_accept"}`))
