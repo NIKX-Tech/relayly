@@ -3,7 +3,14 @@
   "packages": {
     ".": {
       "release-type": "go",
-      "package-name": "relayly"
+      "package-name": "relayly",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "sdk/ts/package.json",
+          "jsonpath": "$.version"
+        }
+      ]
     }
   }
 }
