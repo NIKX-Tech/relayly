@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'relayly-v*'
+  # Manual fallback: a tag pushed by release-please-action's own GITHUB_TOKEN
+  # does not trigger other workflows (a standard GitHub Actions limitation,
+  # not something this repo's config controls) - confirmed live, relayly-v0.8.0
+  # never triggered this workflow at all despite matching the tag pattern
+  # above. Lets a human publish sdk/ts/package.json's current version from any
+  # ref without needing a new tag, if that ever happens again.
+  workflow_dispatch:
 
 permissions:
   contents: read
