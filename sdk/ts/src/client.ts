@@ -52,6 +52,8 @@ const MSG = {
   PAIR_CODE: 'pair_code',
   PAIR_ACCEPT: 'pair_accept',
   PAIR_COMPLETE: 'pair_complete',
+  UNPAIR: 'unpair',
+  UNPAIRED: 'unpaired',
   PEER_STATUS: 'peer_status',
   PING: 'ping',
   PONG: 'pong',
@@ -113,6 +115,11 @@ interface PendingAccept {
   reject: (err: Error) => void;
 }
 
+interface PendingUnpair {
+  resolve: () => void;
+  reject: (err: Error) => void;
+}
+
 // ─── RelaylyClient ────────────────────────────────────────────────────────────
 
 /**
@@ -130,6 +137,7 @@ export class RelaylyClient extends TinyEmitter {
 
   private pendingPairRequest: PendingPairRequest | null = null;
   private pendingPairAccepts = new Map<string, PendingAccept>();
+  private pendingUnpair: PendingUnpair | null = null;
 
   /** Resolves once welcome arrives and announce_key is sent after (re)connect. */
   private authResolve: (() => void) | null = null;
@@ -207,6 +215,26 @@ export class RelaylyClient extends TinyEmitter {
     return new Promise<Peer>((resolve, reject) => {
       this.pendingPairAccepts.set(code, { resolve, reject });
       this.sendControl({ type: MSG.PAIR_ACCEPT, code });
+    });
+  }
+
+  /**
+   * Clear this device's pairing link (docs/PROTOCOL.md §5.4), so a later
+   * requestPairCode/acceptPair can succeed with a different device - without this,
+   * pairing is permanent and any later pair_accept fails already_paired, on either
+   * side. A no-op, not an error, if this device isn't currently paired. Only clears
+   * the server-side lock: if a peer's static key is pinned locally, callers are
+   * responsible for clearing that pin too (§7.1 - unpinning must be an explicit
+   * user action, never an automatic side effect of this call).
+   *
+   * @example
+   * await client.unpair();
+   * const code = await client.requestPairCode();
+   */
+  async unpair(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      this.pendingUnpair = { resolve, reject };
+      this.sendControl({ type: MSG.UNPAIR });
     });
   }
 
@@ -330,6 +358,9 @@ export class RelaylyClient extends TinyEmitter {
       case MSG.PAIR_COMPLETE:
         this.handlePairComplete(frame);
         break;
+      case MSG.UNPAIRED:
+        this.handleUnpaired(frame);
+        break;
       case MSG.PEER_STATUS:
         this.handlePeerStatus(frame);
         break;
@@ -416,6 +447,18 @@ export class RelaylyClient extends TinyEmitter {
     // requester observes completion via the 'paired'/'ready' events (waitForPairing()).
   }
 
+  /** Implements §5.4: fires for both the caller of unpair() and a peer that was
+   * unpaired from unsolicited, so either side's app can react to "no longer
+   * paired" the same way regardless of who initiated it. */
+  private handleUnpaired(frame: WireMessage): void {
+    if (frame.peer_id) this.peerConns.delete(frame.peer_id);
+
+    this.pendingUnpair?.resolve();
+    this.pendingUnpair = null;
+
+    this.emit('unpaired', frame.peer_id);
+  }
+
   /** Implements §6's reconnect rule: whichever side's device_id is lexicographically
    * smaller re-initiates a fresh handshake whenever the peer comes online. */
   private handlePeerStatus(frame: WireMessage): void {
@@ -449,6 +492,8 @@ export class RelaylyClient extends TinyEmitter {
     this.pendingPairRequest = null;
     this.pendingPairAccepts.forEach((p) => p.reject(typedErr));
     this.pendingPairAccepts.clear();
+    this.pendingUnpair?.reject(typedErr);
+    this.pendingUnpair = null;
   }
 
   private handleHandshakeEnvelope(payload: Uint8Array): void {

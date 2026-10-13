@@ -247,6 +247,80 @@ func TestPairDevices_NotFound(t *testing.T) {
 	}
 }
 
+// ── UnpairDevice ────────────────────────────────────────────────────────────
+
+func TestUnpairDevice_ClearsBothSides(t *testing.T) {
+	db := openMem(t)
+	if err := db.CreateDevice(fixture("ua", "a", "uta")); err != nil {
+		t.Fatalf("create a: %v", err)
+	}
+	if err := db.CreateDevice(fixture("ub", "b", "utb")); err != nil {
+		t.Fatalf("create b: %v", err)
+	}
+	if err := db.PairDevices("ua", "ub"); err != nil {
+		t.Fatalf("pair: %v", err)
+	}
+
+	// Unpair from A's side — B's own PairedWith should clear too, even though
+	// B never asked, the same symmetry PairDevices itself writes.
+	if err := db.UnpairDevice("ua"); err != nil {
+		t.Fatalf("unpair: %v", err)
+	}
+
+	a, err := db.GetDeviceByID("ua")
+	if err != nil {
+		t.Fatalf("get a: %v", err)
+	}
+	if a.PairedWith != nil {
+		t.Errorf("A.PairedWith should be nil after unpair, got %v", *a.PairedWith)
+	}
+	b, err := db.GetDeviceByID("ub")
+	if err != nil {
+		t.Fatalf("get b: %v", err)
+	}
+	if b.PairedWith != nil {
+		t.Errorf("B.PairedWith should be nil after unpairing A, got %v", *b.PairedWith)
+	}
+}
+
+func TestUnpairDevice_LeavesRegistrationIntact(t *testing.T) {
+	db := openMem(t)
+	if err := db.CreateDevice(fixture("ux", "x", "utx")); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := db.UnpairDevice("ux"); err != nil {
+		t.Fatalf("unpair never-paired device should be a no-op, not an error: %v", err)
+	}
+	// Still registered — unlike DeleteDevice, this never removes the row.
+	got, err := db.GetDeviceByID("ux")
+	if err != nil {
+		t.Fatalf("device should still exist after unpair: %v", err)
+	}
+	if got.DeviceToken != "utx" {
+		t.Errorf("DeviceToken: want 'utx' unchanged, got %q", got.DeviceToken)
+	}
+}
+
+func TestUnpairDevice_AllowsRepairingWithADifferentDevice(t *testing.T) {
+	db := openMem(t)
+	for _, id := range []string{"ra", "rb", "rc"} {
+		if err := db.CreateDevice(fixture(id, id, "tok-"+id)); err != nil {
+			t.Fatalf("create %s: %v", id, err)
+		}
+	}
+	if err := db.PairDevices("ra", "rb"); err != nil {
+		t.Fatalf("first pair: %v", err)
+	}
+	if err := db.UnpairDevice("ra"); err != nil {
+		t.Fatalf("unpair: %v", err)
+	}
+	// This is the exact scenario PairDevices_AlreadyPaired used to reject
+	// permanently with no way out - confirmed live against a real gateway.
+	if err := db.PairDevices("ra", "rc"); err != nil {
+		t.Fatalf("re-pair with a different device should now succeed: %v", err)
+	}
+}
+
 // ── UpdatePublicKey ───────────────────────────────────────────────────────────
 
 func TestUpdatePublicKey(t *testing.T) {

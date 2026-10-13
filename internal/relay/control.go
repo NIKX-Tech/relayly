@@ -35,7 +35,7 @@ type controlMessage struct {
 	Code      string `json:"code,omitempty"`
 	ExpiresIn int    `json:"expires_in,omitempty"`
 
-	// pair_complete (PeerID is reused by peer_status)
+	// pair_complete (PeerID is reused by peer_status and unpaired)
 	PeerID        string `json:"peer_id,omitempty"`
 	PeerStaticKey string `json:"peer_static_key,omitempty"`
 
@@ -130,6 +130,8 @@ func (c *Client) handleControl(raw []byte) {
 		c.handlePairRequest()
 	case "pair_accept":
 		c.handlePairAccept(msg)
+	case "unpair":
+		c.handleUnpair()
 	case "ping":
 		c.sendJSON(controlMessage{Type: "pong"})
 	default:
@@ -234,5 +236,31 @@ func (c *Client) handlePairAccept(msg controlMessage) {
 			PeerID:        c.DeviceID,
 			PeerStaticKey: myStaticKey,
 		})
+	}
+}
+
+// handleUnpair clears this device's own pairing link (database.UnpairDevice is
+// symmetric, so the peer's side clears too even if it's offline right now) and
+// notifies the peer immediately if it's currently connected - the client-facing
+// counterpart to docs/PROTOCOL.md §7's "unpinning is an explicit user action
+// only", since nothing before this could ever clear a pairing once made.
+// Idempotent: succeeds the same way whether or not there was a peer to begin with.
+func (c *Client) handleUnpair() {
+	peerID, wasPaired := c.Peer()
+
+	if err := c.db.UnpairDevice(c.DeviceID); err != nil {
+		c.log.Error("unpair: db error", zap.Error(err))
+		c.sendError("internal", "internal error")
+		return
+	}
+
+	c.setPeer("")
+	c.sendJSON(controlMessage{Type: "unpaired", PeerID: peerID})
+
+	if wasPaired {
+		if peer, connected := c.hub.GetClient(peerID); connected {
+			peer.setPeer("")
+			peer.sendJSON(controlMessage{Type: "unpaired", PeerID: c.DeviceID})
+		}
 	}
 }

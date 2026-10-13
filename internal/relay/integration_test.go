@@ -456,6 +456,60 @@ func TestIntegration_SendBufferOverflowClosesEvictedConnection(t *testing.T) {
 	}
 }
 
+// TestIntegration_UnpairThenRepairWithADifferentDevice guards against the issue this
+// feature fixes: before UnpairDevice/the unpair control message existed, a device that
+// had ever paired could never legitimately pair with anyone else again -
+// pair_accept against an already-paired device on either side always failed
+// already_paired, with no way out short of deleting the device's registration
+// entirely. Confirmed live against a real gateway and karshipta-cloud site.
+func TestIntegration_UnpairThenRepairWithADifferentDevice(t *testing.T) {
+	ts := newTestServer(t, 65536)
+	devA := registerDevice(t, ts, "unpair-a", "A")
+	devB := registerDevice(t, ts, "unpair-b", "B")
+	devC := registerDevice(t, ts, "unpair-c", "C")
+
+	connA := dial(t, ts, devA)
+	readControl(t, connA) // welcome
+	connB := dial(t, ts, devB)
+	readControl(t, connB) // welcome
+
+	sendControl(t, connA, wireMsg{Type: "pair_request"})
+	pairCode := readControl(t, connA)
+	sendControl(t, connB, wireMsg{Type: "pair_accept", Code: pairCode.Code})
+	readControl(t, connB) // B's pair_complete
+	readControl(t, connA) // A's mirrored pair_complete
+
+	sendControl(t, connA, wireMsg{Type: "unpair"})
+
+	unpairedA := readControl(t, connA)
+	if unpairedA.Type != "unpaired" || unpairedA.PeerID != "unpair-b" {
+		t.Fatalf("A's unpaired: %+v", unpairedA)
+	}
+	// B is still connected - it must find out immediately, not just on its next
+	// pair_accept attempt.
+	unpairedB := readControl(t, connB)
+	if unpairedB.Type != "unpaired" || unpairedB.PeerID != "unpair-a" {
+		t.Fatalf("B's unpaired: %+v", unpairedB)
+	}
+
+	// A pairs with a brand new device, C - this is exactly what used to fail.
+	connC := dial(t, ts, devC)
+	readControl(t, connC) // welcome
+
+	sendControl(t, connA, wireMsg{Type: "pair_request"})
+	pairCode2 := readControl(t, connA)
+	sendControl(t, connC, wireMsg{Type: "pair_accept", Code: pairCode2.Code})
+
+	completeC := readControl(t, connC)
+	if completeC.Type != "pair_complete" || completeC.PeerID != "unpair-a" {
+		t.Fatalf("C's pair_complete: %+v", completeC)
+	}
+	completeA := readControl(t, connA)
+	if completeA.Type != "pair_complete" || completeA.PeerID != "unpair-c" {
+		t.Fatalf("A's mirrored pair_complete: %+v", completeA)
+	}
+}
+
 func TestIntegration_VerbatimRelay_RandomPayloads(t *testing.T) {
 	ts := newTestServer(t, 65536)
 	devA := registerDevice(t, ts, "va", "VA")

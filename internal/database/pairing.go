@@ -132,6 +132,22 @@ func (db *DB) PairDevices(idA, idB string) error {
 	return tx.Commit()
 }
 
+// UnpairDevice clears id's own pairing link, and symmetrically clears whichever
+// device currently points back at it (same symmetric shape as PairDevices' own
+// write), without deleting either device's registration/token - DeleteDevice
+// already covers full removal; this is for a device that wants to stay
+// registered but pair with someone new (docs/PROTOCOL.md §7's "unpinning is an
+// explicit user action only" - this is that action's server-side counterpart,
+// since nothing before this could ever clear a pairing once PairDevices made
+// one). A no-op, not an error, if id was not paired with anyone.
+func (db *DB) UnpairDevice(id string) error {
+	_, err := db.Exec(`UPDATE devices SET paired_with = NULL WHERE id = ? OR paired_with = ?`, id, id)
+	if err != nil {
+		return fmt.Errorf("UnpairDevice: %w", err)
+	}
+	return nil
+}
+
 // UpdatePublicKey sets the legacy Noise public key for a device. Kept only so migration
 // v3 has something to backfill static_key from; nothing writes to it going forward.
 func (db *DB) UpdatePublicKey(id, pubKey string) error {

@@ -88,6 +88,9 @@ Unknown fields MUST be ignored.
   "peer_static_key":"<b64>" }` Sent to **both** devices when a code is accepted.
 - `peer_status` — `{ "type":"peer_status", "peer_id":"...", "online":true|false }`
   Sent on welcome and whenever the paired peer connects/disconnects.
+- `unpaired` — `{ "type":"unpaired", "peer_id":"..." }` Sent to a device after its own
+  `unpair` request succeeds (`peer_id` is whoever it was paired with, if anyone), and to
+  the former peer too if it is currently connected (§5.4).
 - `pong` — `{ "type":"pong" }`
 - `error` — `{ "type":"error", "code":"<machine_code>", "message":"<human>" }`
   Error codes (initial set): `invalid_code`, `code_expired`, `already_paired`,
@@ -99,6 +102,7 @@ Unknown fields MUST be ignored.
   MUST be the first client control message after `welcome`. See §7 (key locking).
 - `pair_request` — `{ "type":"pair_request" }` Ask for a fresh 6-digit code.
 - `pair_accept` — `{ "type":"pair_accept", "code":"483921" }`
+- `unpair` — `{ "type":"unpair" }` Clear this device's own pairing link (§5.4).
 - `ping` — `{ "type":"ping" }` (for runtimes that cannot send WS pings, e.g. browsers).
 
 ### 5.3 Pairing flow
@@ -112,6 +116,26 @@ Unknown fields MUST be ignored.
 
 v1 supports exactly **one linked peer per device** (matches current DB schema). Multi-peer
 routing is roadmap v0.8.
+
+### 5.4 Unpairing
+
+Pairing has no expiry and §2's token-renewal-on-pairing behavior means a paired device
+never needs to re-register, so without an explicit unpair a device can never
+legitimately pair with anyone else again - `pair_accept` against an already-paired
+device on either side MUST fail with `already_paired` (§5.1), by design, unless this
+flow runs first.
+
+1. A device sends `unpair {}`.
+2. The server clears that device's pairing link **and**, symmetrically, whichever
+   device currently points back at it - the same symmetric write `pair_accept` itself
+   makes, undone. This device's registration and `device_token` are untouched; it
+   remains connected and MAY immediately `pair_request`/`pair_accept` again.
+3. Server replies `unpaired` to the requester, and - if the former peer is currently
+   connected - also sends it `unpaired`, so a live peer's own client reacts immediately
+   instead of only discovering the pairing is gone on its next `pair_accept` attempt.
+4. Per §7.1, unpairing clears this server-side lock only. Each SDK's own client-side
+   peer-key pin is a separate, client-owned decision and MUST only be cleared by an
+   explicit action in that client, never automatically as a side effect of this message.
 
 ## 6. E2E channel (binary frames)
 
