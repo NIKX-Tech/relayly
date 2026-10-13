@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.7.2...relayly-v0.8.0) (2026-10-13)
+
+
+### Features
+
+* **relay:** add a device-initiated unpair capability ([#142](https://github.com/NIKX-Tech/relayly/issues/142)) ([f2892af](https://github.com/NIKX-Tech/relayly/commit/f2892af12d9eba8ed8e0e8ff9726af246861e599))
+
+
+### Bug Fixes
+
+* **relay:** close the socket when evicting a peer on buffer overflow ([#140](https://github.com/NIKX-Tech/relayly/issues/140)) ([8bb5645](https://github.com/NIKX-Tech/relayly/commit/8bb564582e5e6caa111d68c36497d761b74e22d4))
+
 ## [0.7.2](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.7.1...relayly-v0.7.2) (2026-08-03)
 
 
