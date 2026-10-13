@@ -422,6 +422,18 @@ func runRekeySafetyTest(server *RunningServer, proxy *Proxy, victimDef, partnerD
 	}); err != nil {
 		return fmt.Errorf("victim never saw a ready_signal for the completed rekey: %w", err)
 	}
+	// Same fix as runPositiveFlow's own post-reconnect step (see its comment): the
+	// victim's own ready_signal only proves the *receiving* side of this rekey is
+	// set up, not that partner - the initiator, who sends the final handshake
+	// message - has finished its own session setup too. Sending to partner before
+	// its own ready_signal fires is exactly the race behind relayly#83 (flaky
+	// "post-rekey A->B roundtrip" timeouts, go victim / ts partner specifically -
+	// the only matrix row with ts as this scenario's partner, confirmed live).
+	if _, err := partnerInst.WaitFor(eventTimeout, func(e Event) bool {
+		return e.Type() == "ready_signal" && e.Str("peer_id") == victim.DeviceID
+	}); err != nil {
+		return fmt.Errorf("partner never saw a ready_signal for the completed rekey: %w", err)
+	}
 
 	if err := roundtrip(victimInst, partnerInst, victim.DeviceID, partner.DeviceID, 32); err != nil {
 		return fmt.Errorf("post-rekey A->B roundtrip failed: %w", err)
