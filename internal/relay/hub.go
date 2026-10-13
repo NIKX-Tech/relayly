@@ -122,9 +122,11 @@ func (h *Hub) Route(msg Message, pairedDeviceID string) {
 
 	if !peer.enqueue(wsFrame{kind: websocket.BinaryMessage, data: msg.Payload}) {
 		// Peer's send buffer is full (or already closing) — evict to prevent
-		// head-of-line blocking.
+		// head-of-line blocking. close() the socket too, not just the registry entry,
+		// so the evicted side actually sees a close frame and can reconnect.
 		h.log.Warn("send buffer full — evicting peer",
 			zap.String("peer_id", pairedDeviceID))
+		peer.close()
 		h.Unregister <- peer
 	}
 }

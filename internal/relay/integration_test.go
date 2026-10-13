@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -399,6 +400,59 @@ func TestIntegration_OversizedFrameClosesConnection(t *testing.T) {
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	if _, _, err := conn.ReadMessage(); err == nil {
 		t.Fatal("expected the connection to be closed after an oversized frame")
+	}
+}
+
+// TestIntegration_SendBufferOverflowClosesEvictedConnection guards against a real
+// incident: Hub.Route's buffer-overflow eviction only removed the peer from the
+// hub's registry (so future Route calls silently drop) without ever closing its
+// actual WebSocket connection. The evicted side saw no close frame, so its SDK
+// never fired a disconnect event and had no signal to reconnect - the connection
+// just went silent forever.
+func TestIntegration_SendBufferOverflowClosesEvictedConnection(t *testing.T) {
+	ts := newTestServer(t, 1<<20)
+	devA := registerDevice(t, ts, "overflow-sender", "Sender")
+	devB := registerDevice(t, ts, "overflow-victim", "Victim")
+
+	connA := dial(t, ts, devA)
+	readControl(t, connA) // welcome
+	connB := dial(t, ts, devB)
+	readControl(t, connB) // welcome
+
+	sendControl(t, connA, wireMsg{Type: "pair_request"})
+	pairCode := readControl(t, connA)
+	sendControl(t, connB, wireMsg{Type: "pair_accept", Code: pairCode.Code})
+	readControl(t, connB) // B's pair_complete
+	readControl(t, connA) // A's mirrored pair_complete
+
+	// Flood B with far more (and far larger) frames than the hub's 256-deep
+	// per-client send buffer and any realistic OS socket buffer can absorb,
+	// without B ever reading any of them, to reliably force Hub.Route's
+	// buffer-overflow eviction path rather than depending on exact timing.
+	payload := make([]byte, 64*1024)
+	for i := 0; i < 1000; i++ {
+		sendEnvelope(t, connA, 0x02, payload)
+	}
+
+	// The evicted connection must actually be closed by the server, not just
+	// silently dropped from the hub's routing table - otherwise the evicted
+	// client never finds out and can never reconnect. Drain whatever backlog
+	// of already-relayed frames was written to the socket before eviction
+	// kicked in, then require the connection to actually terminate rather
+	// than hang waiting for more frames that will never come.
+	_ = connB.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var lastErr error
+	for i := 0; i < 100_000; i++ {
+		if _, _, err := connB.ReadMessage(); err != nil {
+			lastErr = err
+			break
+		}
+	}
+	if lastErr == nil {
+		t.Fatal("expected the evicted connection to eventually be closed")
+	}
+	if netErr, ok := lastErr.(net.Error); ok && netErr.Timeout() {
+		t.Fatalf("evicted connection was never actually closed (read timed out instead): %v", lastErr)
 	}
 }
 
