@@ -48,10 +48,11 @@ await client.connect();
 
 ## Pairing
 
-**v1 links exactly one peer per device.** Pairing again replaces whatever was linked
-before, it doesn't add a second one alongside it. Multi-peer support is a roadmap
-item (`docs/ROADMAP.md`, v0.8). Don't build for N simultaneous peers against this
-version.
+**v1 links exactly one peer per device.** A device that's already paired rejects a
+second `pair_accept` with `already_paired` on either side — pairing again does *not*
+replace the old link automatically. Call `unpair()` first (see "Unpairing" below) if
+you need to link a different device. Multi-peer support is a roadmap item
+(`docs/ROADMAP.md`, v0.8). Don't build for N simultaneous peers against this version.
 
 Devices pair using a short 6-digit code shared out-of-band (or via QR). Both
 `acceptPair()` and `waitForPairing()` block until the Noise handshake actually
@@ -70,6 +71,26 @@ const peerFromB = await client.acceptPair('483921');
 ```
 
 After pairing, both sides fire the `paired` event too.
+
+## Unpairing
+
+Clear this device's pairing link so it can pair with a different device:
+
+```ts
+await client.unpair();
+const code = await client.requestPairCode();
+```
+
+Both sides fire `'unpaired'` — the device that called `unpair()`, and the former
+peer too, immediately, if it's currently connected:
+
+```ts
+client.on('unpaired', (peerId) => console.log('No longer paired with', peerId));
+```
+
+`unpair()` only clears the server-side pairing link (`docs/PROTOCOL.md` §5.4). It
+does not touch your local peer-key pin (below, §7.1) — unpinning is a separate,
+explicit action, by design.
 
 ## Peer key pinning
 
