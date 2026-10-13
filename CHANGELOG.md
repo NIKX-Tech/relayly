@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.8.0...relayly-v0.8.1) (2026-10-13)
+
+
+### Bug Fixes
+
+* **interop:** wait for the partner's own ready_signal in rekey_safety ([#146](https://github.com/NIKX-Tech/relayly/issues/146)) ([7a45755](https://github.com/NIKX-Tech/relayly/commit/7a45755c566235e9aea231d3a4976de7a0daa707))
+* **release:** sync sdk/ts's npm version, add a manual publish fallback ([#144](https://github.com/NIKX-Tech/relayly/issues/144)) ([46fc853](https://github.com/NIKX-Tech/relayly/commit/46fc853cc76e19875bea0d884accc5b36c855885))
+
 ## [0.8.0](https://github.com/NIKX-Tech/relayly/compare/relayly-v0.7.2...relayly-v0.8.0) (2026-10-13)
 
 
