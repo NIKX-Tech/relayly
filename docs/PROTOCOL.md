@@ -87,7 +87,9 @@ Unknown fields MUST be ignored.
 - `pair_complete` — `{ "type":"pair_complete", "code":"483921", "peer_id":"...",
   "peer_static_key":"<b64>" }` Sent to **both** devices when a code is accepted.
 - `peer_status` — `{ "type":"peer_status", "peer_id":"...", "online":true|false }`
-  Sent on welcome and whenever the paired peer connects/disconnects.
+  Sent on welcome and whenever the paired peer connects/disconnects. Carries no cause for
+  a disconnect (graceful vs. timeout vs. transient) - a non-destructive reason signal,
+  distinct from `unpair` (§5.4), is roadmap, see issue #147.
 - `unpaired` — `{ "type":"unpaired", "peer_id":"..." }` Sent to a device after its own
   `unpair` request succeeds (`peer_id` is whoever it was paired with, if anyone), and to
   the former peer too if it is currently connected (§5.4).
